@@ -107,9 +107,30 @@
   .toast{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(20,32,46,.92);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:86vw;text-align:center}
   .toast.show{opacity:1}
   .loading{position:fixed;inset:0;z-index:70;background:rgba(255,255,255,.72);display:grid;place-items:center;font-size:15px;color:var(--blue)}
+  .fatal{position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:99;background:#c0392b;color:#fff;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;box-shadow:0 6px 18px rgba(0,0,0,.2)}
 </style>
 </head>
 <body>
+
+<div id="fatal" class="fatal hidden"></div>
+<script>
+  (function () {
+    function show(msg) {
+      var el = document.getElementById('fatal');
+      if (!el) return;
+      el.textContent = '出错了：' + msg + '\n（把这段截图发给我）';
+      el.classList.remove('hidden');
+    }
+    window.addEventListener('error', function (e) {
+      var where = String(e.filename || '').split('/').pop();
+      show((e.message || '脚本加载失败') + (where ? ' @ ' + where + ':' + (e.lineno || '') : ''));
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      show(r && (r.stack || r.message) ? (r.stack || r.message) : String(r));
+    });
+  })();
+</script>
 
 <header id="topbar">
   <div class="titles">
@@ -876,19 +897,35 @@
     else { b.textContent = '缓存中…'; b.className = 'badge warn'; }
   }
 
+  function applyConfigFromHash() {
+    var m = /[#&]cfg=([A-Za-z0-9_-]+)/.exec(location.hash || '');
+    if (!m) return false;
+    try {
+      var cfg = JSON.parse(C.b64urlDecode(m[1]));
+      saveCfg(Object.assign({}, state.cfg, cfg));
+      history.replaceState(null, '', location.pathname + location.search);
+      setTimeout(function () { toast('已套用手机配置：' + (state.cfg.short_unit || state.cfg.unit || '')); }, 400);
+      if (state.batch && !state.batch.hazards.length) {
+        var meta = state.batch.meta;
+        meta.unit = state.cfg.unit; meta.short_unit = state.cfg.short_unit;
+        meta.issue_unit = state.cfg.issue_unit; meta.inspectors = state.cfg.inspectors;
+        meta.location = state.cfg.location; meta.check_type = state.cfg.check_type;
+        meta.special_name = state.cfg.special_name; meta.deadline_days = state.cfg.deadline_days;
+        saveBatch();
+      }
+      renderHeader();
+      return true;
+    } catch (e) {
+      console.warn('配置解析失败', e);
+    }
+    return false;
+  }
+
   async function boot() {
     state.cfg = loadCfg();
 
     // 扫码带配置：#cfg=<base64url>
-    var m = /[#&]cfg=([A-Za-z0-9_-]+)/.exec(location.hash || '');
-    if (m) {
-      try {
-        var cfg = JSON.parse(C.b64urlDecode(m[1]));
-        saveCfg(Object.assign({}, state.cfg, cfg));
-        history.replaceState(null, '', location.pathname + location.search);
-        setTimeout(function () { toast('已套用手机配置：' + (state.cfg.short_unit || state.cfg.unit || '')); }, 400);
-      } catch (e) { console.warn('配置解析失败', e); }
-    }
+    applyConfigFromHash();
 
     await openDB();
     var batches = await dbAll('batches');
@@ -959,11 +996,19 @@
   }
 
   // ---------------- 启动 ----------------
+  if (!window.SnapCore) {
+    var el = $('fatal');
+    el.textContent = '出错了：core.js 没有加载成功，请刷新页面重试。';
+    el.classList.remove('hidden');
+    return;
+  }
   bind();
   boot().catch(function (e) {
     console.error(e);
-    document.body.innerHTML = '<div style="padding:40px;font-size:15px">初始化失败：' + C.escapeHtml(e.message || e) +
-      '<br><br>请用 Chrome 打开，并确认没有开启无痕模式。</div>';
+    var msg = (e && (e.stack || e.message)) || String(e);
+    var box = $('fatal');
+    box.textContent = '初始化失败：' + msg + '\n（把这段截图发给我）';
+    box.classList.remove('hidden');
   });
 
   if ('serviceWorker' in navigator) {
@@ -975,6 +1020,10 @@
   }
   window.addEventListener('online', updateBadge);
   window.addEventListener('offline', updateBadge);
+  window.addEventListener('hashchange', function () {
+    // 已打开页面时扫码（只变 hash，不会重新加载）
+    if (state.batch) applyConfigFromHash();
+  });
 })();
 </script>
 </body>
