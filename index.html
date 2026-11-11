@@ -1,0 +1,981 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#1f4e79">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>隐患随手拍</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --blue:#1f4e79; --blue2:#2a6496; --bg:#eef3f8; --card:#fff; --line:#dbe3ec;
+    --text:#17232f; --muted:#66788a; --accent:#1668d6; --danger:#c0392b; --ok:#1e8e5a;
+    --r:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text); font-size:16px; line-height:1.5;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    padding-bottom:calc(96px + env(safe-area-inset-bottom));
+  }
+  button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+  input,textarea,select{font:inherit;color:inherit;width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 12px;outline:none}
+  input:focus,textarea:focus{border-color:var(--accent)}
+  textarea{resize:vertical;min-height:96px}
+  .hidden{display:none !important}
+
+  header{
+    position:sticky;top:0;z-index:20;background:var(--blue);color:#fff;
+    padding:calc(10px + env(safe-area-inset-top)) 14px 10px;
+    display:flex;align-items:center;gap:10px;
+  }
+  header .titles{flex:1;min-width:0}
+  header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+  header .sub{font-size:12px;opacity:.82;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28)}
+  .badge.ok{background:rgba(30,142,90,.9);border-color:transparent}
+  .badge.warn{background:rgba(200,120,0,.9);border-color:transparent}
+  .iconbtn{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-size:20px;background:rgba(255,255,255,.14)}
+
+  main{padding:12px 12px 4px}
+  .statbar{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px;margin:0 2px 10px}
+  .statbar b{color:var(--text);font-size:15px}
+
+  .list{display:flex;flex-direction:column;gap:10px}
+  .card{background:var(--card);border-radius:var(--r);padding:10px;display:flex;gap:12px;box-shadow:0 1px 2px rgba(20,40,70,.06);border:1px solid rgba(20,40,70,.04)}
+  .card:active{background:#f7fafd}
+  .thumb{width:112px;height:84px;flex:0 0 112px;border-radius:10px;background:#dfe7ef center/cover no-repeat;position:relative;overflow:hidden;border:1px solid var(--line)}
+  .thumb .nophoto{position:absolute;inset:0;display:grid;place-items:center;color:#9aabbd;font-size:12px}
+  .card .info{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:4px}
+  .card .desc{font-size:15px;font-weight:600;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+  .card .desc.empty{color:#9aabbd;font-weight:400}
+  .card .meta{font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;background:#eef3f8;color:#41546a;font-size:11px}
+  .chip.warn{background:#fff3e0;color:#a35b00}
+  .chip.after{background:#e6f5ec;color:#1a7a4c}
+  .card .arrow{color:#b8c4d2;font-size:20px;align-self:center}
+
+  .empty{text-align:center;color:var(--muted);padding:48px 20px;font-size:14px;line-height:1.8}
+
+  .fabbar{
+    position:fixed;left:0;right:0;bottom:0;z-index:15;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top,rgba(238,243,248,.98) 70%,rgba(238,243,248,0));
+    display:flex;gap:10px;
+  }
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:12px;padding:13px 16px;font-size:16px;font-weight:600;border:1px solid var(--line);background:#fff}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 4px 12px rgba(22,104,214,.25)}
+  .btn.ghost{background:rgba(255,255,255,.9)}
+  .btn.danger{color:var(--danger);border-color:#f0c9c4;background:#fff7f6}
+  .btn.block{flex:1;width:100%}
+  .btn:disabled{opacity:.45}
+  .btn.small{padding:9px 12px;font-size:14px;border-radius:10px}
+
+  /* 编辑页 */
+  #viewEdit{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-bottom:calc(92px + env(safe-area-inset-bottom))}
+  #viewEdit header{position:sticky;top:0}
+  .tabs{display:flex;gap:8px;padding:12px 12px 0}
+  .tabs button{flex:1;padding:9px;border-radius:10px;background:#e3ebf4;color:#41546a;font-size:14px;font-weight:600}
+  .tabs button.on{background:var(--blue);color:#fff}
+  .section{background:#fff;border-radius:var(--r);margin:12px;padding:12px;border:1px solid rgba(20,40,70,.04)}
+  .section h3{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600;letter-spacing:.5px}
+  .photogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .photo{position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:#e7edf4 center/cover no-repeat;border:1px solid var(--line)}
+  .photo .del{position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:15px;display:grid;place-items:center}
+  .photo.add{display:grid;place-items:center;border:1.5px dashed #b9c8d8;background:#f7fafd;color:var(--muted);font-size:26px}
+  .hint{font-size:12px;color:var(--muted);margin:8px 2px 0}
+  .seg{display:flex;gap:8px}
+  .seg button{flex:1;padding:10px;border-radius:10px;background:#eef3f8;border:1px solid var(--line);font-size:15px}
+  .seg button.on{background:#e8f0fb;border-color:var(--accent);color:var(--accent);font-weight:700}
+  .field{margin-top:10px}
+  .field label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px}
+  .row2{display:flex;gap:8px}
+
+  /* 更多/批次 面板 */
+  .mask{position:fixed;inset:0;background:rgba(12,24,38,.45);z-index:40;display:flex;align-items:flex-end}
+  .sheet{width:100%;background:#fff;border-radius:18px 18px 0 0;padding:8px 8px calc(12px + env(safe-area-inset-bottom));max-height:82vh;overflow-y:auto}
+  .sheet h4{margin:10px 12px 6px;font-size:13px;color:var(--muted);font-weight:600}
+  .sheet button{display:flex;width:100%;text-align:left;padding:14px 12px;border-radius:12px;font-size:16px;align-items:center;gap:10px}
+  .sheet button:active{background:#f2f6fa}
+  .sheet .batchline{display:flex;justify-content:space-between;align-items:center}
+  .sheet .batchline small{color:var(--muted);font-size:12px}
+  .toast{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(20,32,46,.92);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:86vw;text-align:center}
+  .toast.show{opacity:1}
+  .loading{position:fixed;inset:0;z-index:70;background:rgba(255,255,255,.72);display:grid;place-items:center;font-size:15px;color:var(--blue)}
+</style>
+</head>
+<body>
+
+<header id="topbar">
+  <div class="titles">
+    <h1>隐患随手拍 <span id="offlineBadge" class="badge">检查中…</span></h1>
+    <div class="sub"><span id="hdrUnit">未设置单位</span> · <span id="hdrDate">—</span></div>
+  </div>
+  <button class="iconbtn" id="btnMenu" aria-label="更多">⋯</button>
+</header>
+
+<main>
+  <div class="statbar">
+    <span>已拍 <b id="statCount">0</b> 条</span>
+    <span>·</span>
+    <span><b id="statPhotos">0</b> 张照片</span>
+    <span>·</span>
+    <span id="statSize">0 MB</span>
+  </div>
+  <div id="hazardList" class="list"></div>
+  <div id="emptyHome" class="empty hidden">还没有拍隐患。<br>点下面的“＋ 拍一条隐患”，横持手机拍 4:3 照片。</div>
+</main>
+
+<div class="fabbar">
+  <button class="btn primary block" id="btnNew">＋ 拍一条隐患</button>
+</div>
+
+<!-- 编辑页 -->
+<section id="viewEdit" class="hidden">
+  <header>
+    <button class="iconbtn" id="btnBack" aria-label="返回">←</button>
+    <div class="titles"><h1 id="editTitle">新隐患</h1><div class="sub" id="editSub"></div></div>
+    <button class="iconbtn" id="btnDeleteHazard" aria-label="删除">🗑</button>
+  </header>
+
+  <div class="tabs" id="phaseTabs">
+    <button data-phase="before" class="on">整改前</button>
+    <button data-phase="after">整改后</button>
+  </div>
+
+  <div class="section">
+    <h3>照片（横拍 4:3，每条最多 6 张）</h3>
+    <div class="photogrid" id="photoGrid"></div>
+    <div class="hint" id="photoHint">点“＋”调相机；点照片上的 × 删除。</div>
+  </div>
+
+  <div class="section">
+    <h3>隐患描述 <span style="color:var(--danger)">*</span></h3>
+    <textarea id="inDesc" placeholder="例：压榨房遥控器缺少保护套，易造成误操作和损坏。&#10;可点输入法上的麦克风直接用语音输入。"></textarea>
+  </div>
+
+  <div class="section">
+    <h3>位置</h3>
+    <input id="inLocation" list="locationList" placeholder="如：选矿厂压榨房">
+    <datalist id="locationList"></datalist>
+    <div class="field">
+      <label>隐患类别</label>
+      <div class="seg" id="segLevel">
+        <button data-level="一般" class="on">一般</button>
+        <button data-level="较大">较大</button>
+        <button data-level="重大">重大</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>整改责任人（可空）</label>
+      <input id="inResp" placeholder="如：李强、胡振坤">
+    </div>
+  </div>
+
+  <div class="fabbar">
+    <button class="btn ghost" id="btnSaveBack" style="flex:0 0 auto">保存</button>
+    <button class="btn primary block" id="btnSaveNext">保存并继续拍</button>
+  </div>
+</section>
+
+<!-- 设置 -->
+<section id="viewSettings" class="hidden" style="position:fixed;inset:0;z-index:35;background:var(--bg);overflow-y:auto;padding-bottom:40px">
+  <header>
+    <button class="iconbtn" id="btnSetBack" aria-label="返回">←</button>
+    <div class="titles"><h1>我的设置</h1><div class="sub">新建批次时自动带出，手机上只需填一次</div></div>
+  </header>
+  <div class="section">
+    <h3>受查单位</h3>
+    <input id="cfgUnit" placeholder="单位全称">
+    <div class="field"><label>单位简称</label><input id="cfgShort" placeholder="如：甲子背稀土矿"></div>
+    <div class="field"><label>检查单位</label><input id="cfgIssue" placeholder="如：驻矿组"></div>
+  </div>
+  <div class="section">
+    <h3>检查信息</h3>
+    <input id="cfgInspectors" placeholder="检查人，如：许书林、刘家庆">
+    <div class="field"><label>检查地点</label><input id="cfgLocation" placeholder="如：甲子背稀土矿选矿厂"></div>
+    <div class="row2 field">
+      <div style="flex:1"><label>检查类型</label>
+        <select id="cfgType"><option>一般检查</option><option>专项检查</option></select>
+      </div>
+      <div style="flex:1"><label>整改期限（天）</label><input id="cfgDays" type="number" min="1" max="365" inputmode="numeric"></div>
+    </div>
+    <div class="field"><label>专项名称（专项检查才填）</label><input id="cfgSpecial" placeholder="如：消防安全专项检查"></div>
+  </div>
+  <div class="section">
+    <button class="btn primary block" id="btnSaveCfg">保存设置</button>
+    <p class="hint">也可以在电脑端点“生成手机配置二维码”，手机扫码自动填好这些内容。</p>
+  </div>
+</section>
+
+<div id="mask" class="mask hidden">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<div id="toast" class="toast"></div>
+<div id="loading" class="loading hidden">处理中…</div>
+
+<script src="core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var C = window.SnapCore;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ---------------- 状态 ----------------
+  var state = { cfg: null, batch: null, photos: [], editing: null };
+
+  function defaultCfg() {
+    return { unit: '', short_unit: '', issue_unit: '', inspectors: '', location: '',
+             check_type: '一般检查', special_name: '', deadline_days: 7 };
+  }
+
+  function loadCfg() {
+    try {
+      var raw = localStorage.getItem('snap.cfg');
+      if (raw) return Object.assign(defaultCfg(), JSON.parse(raw));
+    } catch (e) {}
+    return defaultCfg();
+  }
+
+  function saveCfg(cfg) {
+    state.cfg = Object.assign(defaultCfg(), cfg || {});
+    try { localStorage.setItem('snap.cfg', JSON.stringify(state.cfg)); } catch (e) {}
+  }
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('show'); }, 2200);
+  }
+
+  function setLoading(on, text) {
+    var el = $('loading');
+    if (on) { el.textContent = text || '处理中…'; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  }
+
+  // ---------------- IndexedDB ----------------
+  var dbPromise = null;
+
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      var req = indexedDB.open('hazard-snap', 1);
+      req.onupgradeneeded = function (e) {
+        var db = e.target.result;
+        if (!db.objectStoreNames.contains('batches')) db.createObjectStore('batches', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('photos')) {
+          var s = db.createObjectStore('photos', { keyPath: 'key' });
+          s.createIndex('byBatch', 'batchId');
+          s.createIndex('byHazard', 'hazardId');
+        }
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+    });
+    return dbPromise;
+  }
+
+  function store(name, mode) {
+    return openDB().then(function (db) { return db.transaction(name, mode || 'readonly').objectStore(name); });
+  }
+
+  function reqP(req) {
+    return new Promise(function (res, rej) {
+      req.onsuccess = function () { res(req.result); };
+      req.onerror = function () { rej(req.error); };
+    });
+  }
+
+  function dbGet(name, key) { return store(name).then(function (s) { return reqP(s.get(key)); }); }
+  function dbPut(name, val) { return store(name, 'readwrite').then(function (s) { return reqP(s.put(val)); }); }
+  function dbDel(name, key) { return store(name, 'readwrite').then(function (s) { return reqP(s.delete(key)); }); }
+  function dbIndex(name, idx, key) {
+    return store(name).then(function (s) { return reqP(s.index(idx).getAll(key)); });
+  }
+  function dbAll(name) { return store(name).then(function (s) { return reqP(s.getAll()); }); }
+
+  // ---------------- 批次 ----------------
+  function newBatchMeta(cfg) {
+    var now = new Date();
+    return {
+      id: C.makeBatchId(now),
+      created: C.isoNow(),
+      updated: C.isoNow(),
+      exported_at: '',
+      meta: {
+        check_date: C.todayStr(now),
+        unit: cfg.unit || '',
+        short_unit: cfg.short_unit || '',
+        issue_unit: cfg.issue_unit || '',
+        inspectors: cfg.inspectors || '',
+        location: cfg.location || '',
+        check_type: cfg.check_type || '一般检查',
+        special_name: cfg.special_name || '',
+        deadline_days: Number(cfg.deadline_days) || 7
+      },
+      hazards: []
+    };
+  }
+
+  function saveBatch() {
+    state.batch.updated = C.isoNow();
+    return dbPut('batches', state.batch);
+  }
+
+  function nextHazardId(batch) {
+    var max = 0;
+    batch.hazards.forEach(function (h) {
+      var m = /^h-(\d+)$/.exec(h.id || '');
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    });
+    var id = C.makeHazardId(max + 1);
+    while (batch.hazards.some(function (h) { return h.id === id; })) {
+      max += 1;
+      id = C.makeHazardId(max + 1);
+    }
+    return id;
+  }
+
+  function hazardById(id) {
+    return state.batch.hazards.filter(function (h) { return h.id === id; })[0] || null;
+  }
+
+  function photosOf(hazardId, phase) {
+    return state.photos.filter(function (p) {
+      return p.hazardId === hazardId && (!phase || p.phase === phase);
+    }).sort(function (a, b) { return a.order - b.order; });
+  }
+
+  async function refreshPhotos() {
+    state.photos = await dbIndex('photos', 'byBatch', state.batch.id);
+  }
+
+  // ---------------- 图片压缩 ----------------
+  function loadImage(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { res({ img: img, url: url }); };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error('照片无法解码')); };
+      img.src = url;
+    });
+  }
+
+  function canvasBlob(canvas, type, quality) {
+    return new Promise(function (res) { canvas.toBlob(function (b) { res(b); }, type, quality); });
+  }
+
+  async function sha1Hex(buf) {
+    if (!(window.crypto && crypto.subtle)) return '';
+    var digest = await crypto.subtle.digest('SHA-1', buf);
+    return Array.prototype.map.call(new Uint8Array(digest), function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+  }
+
+  async function compressImage(file) {
+    var src = null, w = 0, h = 0, cleanup = null;
+    if (window.createImageBitmap) {
+      try {
+        src = await createImageBitmap(file, { imageOrientation: 'from-image' });
+        w = src.width; h = src.height;
+      } catch (e) { src = null; }
+    }
+    if (!src) {
+      var loaded = await loadImage(file);
+      src = loaded.img; w = src.naturalWidth; h = src.naturalHeight;
+      cleanup = function () { URL.revokeObjectURL(loaded.url); };
+    }
+    var max = 2560;
+    var scale = Math.min(1, max / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * scale));
+    var ch = Math.max(1, Math.round(h * scale));
+    var canvas = document.createElement('canvas');
+    canvas.width = cw; canvas.height = ch;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cw, ch);
+    ctx.drawImage(src, 0, 0, cw, ch);
+    var blob = await canvasBlob(canvas, 'image/jpeg', 0.88);
+    if (cleanup) cleanup();
+    if (src.close) src.close();
+
+    // 4:3 缩略图（白底居中）
+    var tc = document.createElement('canvas');
+    tc.width = 320; tc.height = 240;
+    var tctx = tc.getContext('2d');
+    tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, 320, 240);
+    var s2 = Math.min(320 / cw, 240 / ch);
+    var tw = Math.round(cw * s2), th = Math.round(ch * s2);
+    tctx.drawImage(canvas, (320 - tw) / 2, (240 - th) / 2, tw, th);
+    var thumb = await canvasBlob(tc, 'image/jpeg', 0.75);
+
+    var buf = await blob.arrayBuffer();
+    return { blob: blob, thumb: thumb, w: cw, h: ch, bytes: blob.size, sha1: await sha1Hex(buf) };
+  }
+
+  async function addPhotos(files) {
+    var ed = state.editing;
+    var existing = photosOf(ed.hazardId, ed.phase);
+    var have = existing.length;
+    var maxOrder = existing.reduce(function (m, p) { return Math.max(m, p.order || 0); }, 0);
+    var room = 6 - have;
+    if (room <= 0) { toast('这条隐患已有 6 张照片'); return; }
+    var list = Array.prototype.slice.call(files, 0, room);
+    if (list.length < files.length) toast('每条最多 6 张，多出的已忽略');
+    for (var i = 0; i < list.length; i++) {
+      setLoading(true, '处理照片 ' + (i + 1) + '/' + list.length + '…');
+      try {
+        var c = await compressImage(list[i]);
+        var order = maxOrder + i + 1;
+        var rec = {
+          key: ed.hazardId + ':' + ed.phase + ':' + order,
+          batchId: state.batch.id, hazardId: ed.hazardId, phase: ed.phase, order: order,
+          blob: c.blob, thumb: c.thumb, w: c.w, h: c.h, bytes: c.bytes, sha1: c.sha1,
+          createdAt: C.isoNow()
+        };
+        await dbPut('photos', rec);
+        state.photos.push(rec);
+      } catch (e) {
+        toast('照片处理失败：' + (e.message || e));
+      }
+    }
+    setLoading(false);
+    renderPhotos();
+  }
+
+  async function deletePhoto(rec) {
+    if (!confirm('删除这张照片？')) return;
+    await dbDel('photos', rec.key);
+    state.photos = state.photos.filter(function (p) { return p.key !== rec.key; });
+    renderPhotos();
+  }
+
+  // ---------------- 渲染 ----------------
+  var urls = [];
+  function revokeUrls() {
+    urls.forEach(function (u) { URL.revokeObjectURL(u); });
+    urls = [];
+  }
+
+  function photoUrl(blob) {
+    var u = URL.createObjectURL(blob);
+    urls.push(u);
+    return u;
+  }
+
+  function renderHeader() {
+    var cfg = state.cfg;
+    $('hdrUnit').textContent = (state.batch && state.batch.meta.unit) || cfg.unit || '未设置单位';
+    $('hdrDate').textContent = state.batch ? state.batch.meta.check_date + ' · ' + state.batch.hazards.length + ' 条' : '';
+  }
+
+  function renderHome() {
+    revokeUrls();
+    var list = $('hazardList');
+    var batch = state.batch;
+    list.innerHTML = '';
+    $('emptyHome').classList.toggle('hidden', batch.hazards.length > 0);
+    batch.hazards.forEach(function (h, idx) {
+      var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
+      var before = photosOf(h.id, 'before').length;
+      var after = photosOf(h.id, 'after').length;
+      var el = document.createElement('div');
+      el.className = 'card';
+      var thumb = ph.length ? photoUrl(ph[0].thumb) : '';
+      el.innerHTML =
+        '<div class="thumb" style="' + (thumb ? "background-image:url('" + thumb + "')" : '') + '">' +
+          (thumb ? '' : '<div class="nophoto">无照片</div>') +
+        '</div>' +
+        '<div class="info">' +
+          '<div class="desc' + (h.desc ? '' : ' empty') + '">' + C.escapeHtml(h.desc || '（未填写描述）') + '</div>' +
+          '<div class="meta">' +
+            '<span class="chip">' + (idx + 1) + '</span>' +
+            '<span class="chip ' + (h.level === '重大' ? 'warn' : '') + '">' + C.escapeHtml(h.level || '一般') + '</span>' +
+            '<span>前 ' + before + ' 张</span>' +
+            (after ? '<span class="chip after">后 ' + after + ' 张</span>' : '') +
+          '</div>' +
+          (h.location ? '<div class="meta">' + C.escapeHtml(h.location) + '</div>' : '') +
+        '</div>' +
+        '<div class="arrow">›</div>';
+      el.addEventListener('click', function () { openEdit(h.id); });
+      list.appendChild(el);
+    });
+
+    var n = batch.hazards.filter(function (h) { return h.desc.trim() || photosOf(h.id).length; }).length;
+    var photos = state.photos.length;
+    var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
+    $('statCount').textContent = n;
+    $('statPhotos').textContent = photos;
+    $('statSize').textContent = C.formatBytes(bytes);
+    renderHeader();
+  }
+
+  function renderPhotos() {
+    var ed = state.editing;
+    if (!ed) return;
+    var grid = $('photoGrid');
+    grid.innerHTML = '';
+    var list = photosOf(ed.hazardId, ed.phase);
+    list.forEach(function (rec, i) {
+      var el = document.createElement('div');
+      el.className = 'photo';
+      el.style.backgroundImage = "url('" + photoUrl(rec.thumb) + "')";
+      var del = document.createElement('div');
+      del.className = 'del';
+      del.textContent = '×';
+      del.addEventListener('click', function (e) { e.stopPropagation(); deletePhoto(rec); });
+      el.appendChild(del);
+      grid.appendChild(el);
+    });
+    if (list.length < 6) {
+      var add = document.createElement('div');
+      add.className = 'photo add';
+      add.textContent = '＋';
+      add.addEventListener('click', function () { $('fileCamera').click(); });
+      grid.appendChild(add);
+    }
+    $('photoHint').textContent = list.length + ' / 6 张 · 横拍 4:3 最合适，竖拍在文书里会左右留白';
+  }
+
+  function fillEditForm(h) {
+    $('inDesc').value = h.desc || '';
+    $('inLocation').value = h.location || '';
+    $('inResp').value = h.responsible || '';
+    var level = h.level || '一般';
+    Array.prototype.forEach.call($('segLevel').children, function (b) {
+      b.classList.toggle('on', b.dataset.level === level);
+    });
+    var opts = (state.cfg.locations || []).slice();
+    var base = (state.batch.meta.location || '').trim();
+    if (base && opts.indexOf(base) < 0) opts.unshift(base);
+    state.batch.hazards.forEach(function (x) { if (x.location && opts.indexOf(x.location) < 0) opts.push(x.location); });
+    $('locationList').innerHTML = opts.slice(0, 12).map(function (t) {
+      return '<option value="' + C.escapeHtml(t) + '"></option>';
+    }).join('');
+  }
+
+  function openEdit(hazardId) {
+    var h = hazardById(hazardId);
+    if (!h) return;
+    state.editing = { hazardId: hazardId, phase: 'before' };
+    var idx = state.batch.hazards.indexOf(h) + 1;
+    $('editTitle').textContent = '隐患 ' + idx;
+    $('editSub').textContent = (state.batch.meta.short_unit || state.batch.meta.unit || '') + ' · ' + state.batch.meta.check_date;
+    $('phaseTabs').classList.remove('hidden');
+    Array.prototype.forEach.call($('phaseTabs').children, function (b) {
+      b.classList.toggle('on', b.dataset.phase === 'before');
+    });
+    fillEditForm(h);
+    renderPhotos();
+    showView('edit');
+  }
+
+  async function startNew() {
+    var batch = state.batch;
+    var id = nextHazardId(batch);
+    var h = {
+      id: id, seq: batch.hazards.length + 1, desc: '', location: '',
+      level: '一般', responsible: '', created: C.isoNow()
+    };
+    batch.hazards.push(h);
+    await saveBatch();
+    state.editing = { hazardId: id, phase: 'before' };
+    $('editTitle').textContent = '新隐患';
+    $('editSub').textContent = (batch.meta.short_unit || batch.meta.unit || '') + ' · ' + batch.meta.check_date;
+    $('phaseTabs').classList.add('hidden');
+    fillEditForm(h);
+    renderPhotos();
+    showView('edit');
+    setTimeout(function () { $('inDesc').focus(); }, 250);
+  }
+
+  function showView(name) {
+    document.body.dataset.view = name;
+    $('viewEdit').classList.toggle('hidden', name !== 'edit');
+    $('viewSettings').classList.toggle('hidden', name !== 'settings');
+    $('topbar').classList.toggle('hidden', name !== 'home');
+    document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home');
+    if (name === 'home') renderHome();
+  }
+
+  // ---------------- 保存 ----------------
+  function readForm() {
+    var h = hazardById(state.editing.hazardId);
+    if (!h) return null;
+    h.desc = $('inDesc').value.trim();
+    h.location = $('inLocation').value.trim();
+    h.responsible = $('inResp').value.trim();
+    var on = $('segLevel').querySelector('.on');
+    h.level = on ? on.dataset.level : '一般';
+    return h;
+  }
+
+  async function saveEdit(next) {
+    var h = readForm();
+    if (!h) return;
+    var photos = photosOf(h.id).length;
+    if (!h.desc && !photos) {
+      // 空条目直接丢弃
+      state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
+      await saveBatch();
+      toast('已放弃空白条目');
+      showView('home');
+      return;
+    }
+    if (!h.desc) {
+      toast('请填写隐患描述（有照片也算）');
+      $('inDesc').focus();
+      return;
+    }
+    await saveBatch();
+    if (next) {
+      await startNew();
+    } else {
+      showView('home');
+      toast('已保存');
+    }
+  }
+
+  async function deleteHazard() {
+    var h = hazardById(state.editing.hazardId);
+    if (!h) return;
+    if (!confirm('删除这条隐患及其照片？')) return;
+    state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
+    var recs = photosOf(h.id);
+    for (var i = 0; i < recs.length; i++) { await dbDel('photos', recs[i].key); }
+    state.photos = state.photos.filter(function (p) { return p.hazardId !== h.id; });
+    await saveBatch();
+    showView('home');
+    toast('已删除');
+  }
+
+  // ---------------- 导出 ----------------
+  async function buildZip() {
+    var batch = state.batch;
+    var photos = await dbIndex('photos', 'byBatch', batch.id);
+    var byH = {};
+    photos.forEach(function (p) { (byH[p.hazardId] = byH[p.hazardId] || []).push(p); });
+    var files = [];
+    var payload = {
+      schema: 'hazard-snap/1',
+      exported_at: C.isoNow(),
+      batch: {
+        id: batch.id, created: batch.created, check_date: batch.meta.check_date,
+        unit: batch.meta.unit, short_unit: batch.meta.short_unit,
+        issue_unit: batch.meta.issue_unit, inspectors: batch.meta.inspectors,
+        location: batch.meta.location, check_type: batch.meta.check_type,
+        special_name: batch.meta.special_name, deadline_days: batch.meta.deadline_days
+      },
+      hazards: []
+    };
+    var hazards = batch.hazards.slice().sort(function (a, b) { return a.seq - b.seq; });
+    for (var i = 0; i < hazards.length; i++) {
+      var h = hazards[i];
+      var recs = (byH[h.id] || []).slice().sort(function (a, b) {
+        return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1);
+      });
+      var item = {
+        id: h.id, seq: h.seq, desc: h.desc, location: h.location, level: h.level,
+        responsible: h.responsible, created: h.created, photos: []
+      };
+      var counter = { before: 0, after: 0 };
+      for (var j = 0; j < recs.length; j++) {
+        var p = recs[j];
+        counter[p.phase] = (counter[p.phase] || 0) + 1;
+        var nn = ('0' + counter[p.phase]).slice(-2);
+        var rel = 'photos/' + h.id + '/' + p.phase + '-' + nn + '.jpg';
+        var trel = 'thumbs/' + h.id + '/' + p.phase + '-' + nn + '.jpg';
+        item.photos.push({ phase: p.phase, file: rel, w: p.w, h: p.h, bytes: p.bytes, sha1: p.sha1 });
+        files.push({ name: rel, data: new Uint8Array(await p.blob.arrayBuffer()) });
+        if (p.thumb) files.push({ name: trel, data: new Uint8Array(await p.thumb.arrayBuffer()) });
+      }
+      payload.hazards.push(item);
+    }
+    files.unshift({ name: 'batch.json', data: JSON.stringify(payload, null, 2) });
+    return { parts: C.zipParts(files), count: payload.hazards.length, photos: photos.length };
+  }
+
+  async function exportBatch() {
+    if (!state.batch.hazards.length) { toast('还没有隐患可导出'); return; }
+    setLoading(true, '正在打包…');
+    try {
+      var out = await buildZip();
+      var short = C.safeName(state.batch.meta.short_unit || state.batch.meta.unit || '随手拍');
+      var fname = '随手拍_' + state.batch.meta.check_date.replace(/-/g, '') + '_' + short + '.zip';
+      var blob = new Blob(out.parts, { type: 'application/zip' });
+      var file;
+      try { file = new File([blob], fname, { type: 'application/zip' }); } catch (e) { file = null; }
+      setLoading(false);
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: '随手拍批次', text: '隐患随手拍 ' + state.batch.meta.check_date });
+          markExported();
+          return;
+        } catch (e) { /* 用户取消则退回下载 */ }
+      }
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      markExported();
+      toast('已导出 ' + fname + '（' + C.formatBytes(blob.size) + '）');
+    } catch (e) {
+      setLoading(false);
+      toast('导出失败：' + (e.message || e));
+    }
+  }
+
+  async function markExported() {
+    state.batch.exported_at = C.isoNow();
+    await saveBatch();
+  }
+
+  // ---------------- 批次 / 菜单 ----------------
+  function openSheet(html) {
+    $('sheet').innerHTML = html;
+    $('mask').classList.remove('hidden');
+  }
+  function closeSheet() { $('mask').classList.add('hidden'); }
+
+  async function openMenu() {
+    var batches = await dbAll('batches');
+    batches.sort(function (a, b) { return (b.updated || '').localeCompare(a.updated || ''); });
+    var list = batches.map(function (b, i) {
+      return '<button data-batch="' + C.escapeHtml(b.id) + '"><span class="batchline" style="flex:1">' +
+        '<span>' + C.escapeHtml(b.meta.check_date || '') + ' ' + C.escapeHtml(b.meta.short_unit || b.meta.unit || '（未命名）') +
+        (b.id === state.batch.id ? ' <span class="chip">当前</span>' : '') + '</span>' +
+        '<small>' + b.hazards.length + ' 条</small></span></button>';
+    }).join('');
+    openSheet(
+      '<h4>当前批次</h4>' +
+      '<button id="mExport">📦 导出批次包（zip）</button>' +
+      '<button id="mNewBatch">🗓 新建批次</button>' +
+      '<h4>历史批次（点一下切换）</h4>' + (list || '<button disabled>暂无</button>') +
+      '<h4>其它</h4>' +
+      '<button id="mSettings">⚙ 我的设置</button>' +
+      '<button id="mStorage">💾 存储占用 / 清理</button>' +
+      '<button id="mClose">关闭</button>'
+    );
+    $('mExport').onclick = function () { closeSheet(); exportBatch(); };
+    $('mNewBatch').onclick = function () { closeSheet(); startNewBatch(); };
+    $('mSettings').onclick = function () { closeSheet(); openSettings(); };
+    $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
+    $('mClose').onclick = closeSheet;
+    Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
+      b.onclick = function () { closeSheet(); switchBatch(b.dataset.batch); };
+    });
+  }
+
+  async function switchBatch(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    state.batch = b;
+    await refreshPhotos();
+    showView('home');
+  }
+
+  async function startNewBatch() {
+    var current = state.batch;
+    if (current && current.hazards.length && !confirm('新建批次会切换到新的一份文书，当前批次仍可在“历史批次”里找回。继续？')) return;
+    var b = newBatchMeta(state.cfg);
+    await dbPut('batches', b);
+    state.batch = b;
+    state.photos = [];
+    showView('home');
+    toast('已新建批次 ' + b.meta.check_date);
+  }
+
+  async function storageInfo() {
+    var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
+    var quota = 0;
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        var est = await navigator.storage.estimate();
+        quota = est.quota || 0;
+      }
+    } catch (e) {}
+    openSheet(
+      '<h4>存储占用</h4>' +
+      '<button disabled>当前批次 ' + C.formatBytes(bytes) + ' · ' + state.photos.length + ' 张</button>' +
+      '<button disabled>' + (quota ? '浏览器可用约 ' + C.formatBytes(quota) : '浏览器未报告容量') + '</button>' +
+      '<button disabled style="color:#66788a;font-size:13px">导出后即可清理旧批次，数据不会自动上传任何服务器。</button>' +
+      '<button id="mClearExported">🧹 删除其它已导出批次</button>' +
+      '<button id="mClose2">关闭</button>'
+    );
+    $('mClose2').onclick = closeSheet;
+    $('mClearExported').onclick = async function () {
+      var batches = await dbAll('batches');
+      var targets = batches.filter(function (b) { return b.id !== state.batch.id && b.exported_at; });
+      if (!targets.length) { toast('没有已导出且非当前的批次'); return; }
+      if (!confirm('删除 ' + targets.length + ' 个已导出批次（含照片）？')) return;
+      for (var i = 0; i < targets.length; i++) {
+        var ps = await dbIndex('photos', 'byBatch', targets[i].id);
+        for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
+        await dbDel('batches', targets[i].id);
+      }
+      closeSheet();
+      toast('已清理 ' + targets.length + ' 个批次');
+    };
+  }
+
+  // ---------------- 设置 ----------------
+  function openSettings() {
+    var c = state.cfg;
+    $('cfgUnit').value = c.unit || '';
+    $('cfgShort').value = c.short_unit || '';
+    $('cfgIssue').value = c.issue_unit || '';
+    $('cfgInspectors').value = c.inspectors || '';
+    $('cfgLocation').value = c.location || '';
+    $('cfgType').value = c.check_type || '一般检查';
+    $('cfgDays').value = c.deadline_days || 7;
+    $('cfgSpecial').value = c.special_name || '';
+    showView('settings');
+  }
+
+  function saveSettings() {
+    saveCfg({
+      unit: $('cfgUnit').value.trim(),
+      short_unit: $('cfgShort').value.trim(),
+      issue_unit: $('cfgIssue').value.trim(),
+      inspectors: $('cfgInspectors').value.trim(),
+      location: $('cfgLocation').value.trim(),
+      check_type: $('cfgType').value,
+      special_name: $('cfgSpecial').value.trim(),
+      deadline_days: Number($('cfgDays').value) || 7,
+      locations: state.cfg.locations || []
+    });
+    // 当前批次还没内容时，同步更新基础信息
+    if (state.batch && !state.batch.hazards.length) {
+      var m = state.batch.meta;
+      m.unit = state.cfg.unit; m.short_unit = state.cfg.short_unit;
+      m.issue_unit = state.cfg.issue_unit; m.inspectors = state.cfg.inspectors;
+      m.location = state.cfg.location; m.check_type = state.cfg.check_type;
+      m.special_name = state.cfg.special_name; m.deadline_days = state.cfg.deadline_days;
+      saveBatch();
+    }
+    showView('home');
+    toast('设置已保存');
+  }
+
+  // ---------------- 离线状态 ----------------
+  function updateBadge() {
+    var b = $('offlineBadge');
+    if (!('serviceWorker' in navigator)) { b.textContent = '仅在线'; b.className = 'badge warn'; return; }
+    if (navigator.serviceWorker.controller) { b.textContent = '离线可用 ✓'; b.className = 'badge ok'; }
+    else { b.textContent = '缓存中…'; b.className = 'badge warn'; }
+  }
+
+  async function boot() {
+    state.cfg = loadCfg();
+
+    // 扫码带配置：#cfg=<base64url>
+    var m = /[#&]cfg=([A-Za-z0-9_-]+)/.exec(location.hash || '');
+    if (m) {
+      try {
+        var cfg = JSON.parse(C.b64urlDecode(m[1]));
+        saveCfg(Object.assign({}, state.cfg, cfg));
+        history.replaceState(null, '', location.pathname + location.search);
+        setTimeout(function () { toast('已套用手机配置：' + (state.cfg.short_unit || state.cfg.unit || '')); }, 400);
+      } catch (e) { console.warn('配置解析失败', e); }
+    }
+
+    await openDB();
+    var batches = await dbAll('batches');
+    batches.sort(function (a, b) { return (b.updated || '').localeCompare(a.updated || ''); });
+    if (batches.length) {
+      state.batch = batches[0];
+    } else {
+      state.batch = newBatchMeta(state.cfg);
+      await dbPut('batches', state.batch);
+    }
+    await refreshPhotos();
+    showView('home');
+    updateBadge();
+  }
+
+  // ---------------- 事件绑定 ----------------
+  function bind() {
+    $('btnMenu').addEventListener('click', openMenu);
+    $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
+    $('btnNew').addEventListener('click', startNew);
+    $('btnBack').addEventListener('click', function () {
+      readForm();
+      saveBatch().then(function () {
+        // 空条目丢弃
+        var h = hazardById(state.editing.hazardId);
+        if (h && !h.desc && !photosOf(h.id).length) {
+          state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
+          return saveBatch();
+        }
+      }).then(function () { showView('home'); });
+    });
+    $('btnSaveBack').addEventListener('click', function () { saveEdit(false); });
+    $('btnSaveNext').addEventListener('click', function () { saveEdit(true); });
+    $('btnDeleteHazard').addEventListener('click', deleteHazard);
+    $('btnSetBack').addEventListener('click', function () { showView('home'); });
+    $('btnSaveCfg').addEventListener('click', saveSettings);
+
+    Array.prototype.forEach.call($('segLevel').children, function (b) {
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call($('segLevel').children, function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+      });
+    });
+
+    Array.prototype.forEach.call($('phaseTabs').children, function (b) {
+      b.addEventListener('click', function () {
+        Array.prototype.forEach.call($('phaseTabs').children, function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        state.editing.phase = b.dataset.phase;
+        renderPhotos();
+      });
+    });
+
+    // 两个文件输入：相机 / 相册
+    var cam = document.createElement('input');
+    cam.type = 'file'; cam.accept = 'image/*'; cam.capture = 'environment'; cam.multiple = true;
+    cam.id = 'fileCamera'; cam.className = 'hidden';
+    document.body.appendChild(cam);
+    cam.addEventListener('change', function () { addPhotos(cam.files); cam.value = ''; });
+
+    var pick = document.createElement('input');
+    pick.type = 'file'; pick.accept = 'image/*'; pick.multiple = true;
+    pick.id = 'filePick'; pick.className = 'hidden';
+    document.body.appendChild(pick);
+    pick.addEventListener('change', function () { addPhotos(pick.files); pick.value = ''; });
+
+    // 长按照片提示：改用删除按钮，不做复杂手势
+  }
+
+  // ---------------- 启动 ----------------
+  bind();
+  boot().catch(function (e) {
+    console.error(e);
+    document.body.innerHTML = '<div style="padding:40px;font-size:15px">初始化失败：' + C.escapeHtml(e.message || e) +
+      '<br><br>请用 Chrome 打开，并确认没有开启无痕模式。</div>';
+  });
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').then(function () { return navigator.serviceWorker.ready; })
+        .then(updateBadge).catch(function (e) { console.warn('SW 注册失败', e); updateBadge(); });
+      navigator.serviceWorker.addEventListener('controllerchange', updateBadge);
+    });
+  }
+  window.addEventListener('online', updateBadge);
+  window.addEventListener('offline', updateBadge);
+})();
+</script>
+</body>
+</html>
