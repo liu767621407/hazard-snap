@@ -172,12 +172,22 @@
   <div class="section">
     <h3>照片（横拍 4:3，每条最多 6 张）</h3>
     <div class="photogrid" id="photoGrid"></div>
-    <div class="hint" id="photoHint">点“＋”调相机；点照片上的 × 删除。</div>
+    <div class="row2" style="margin-top:10px">
+      <button class="btn small block" id="btnPhotoCamera">📷 拍照</button>
+      <button class="btn small block" id="btnPhotoAlbum">🖼 从相册导入</button>
+    </div>
+    <div class="hint" id="photoHint">点“＋”或“拍照”调相机；点照片上的 × 删除。</div>
   </div>
 
   <div class="section">
     <h3>隐患描述 <span style="color:var(--danger)">*</span></h3>
     <textarea id="inDesc" placeholder="例：压榨房遥控器缺少保护套，易造成误操作和损坏。&#10;可点输入法上的麦克风直接用语音输入。"></textarea>
+  </div>
+
+  <div class="section">
+    <h3>整改措施</h3>
+    <textarea id="inMeasure" placeholder="例：已配备遥控器保护套并固定存放。&#10;会作为通知单“检查处理意见（整改要求）”逐条列出。"></textarea>
+    <div class="hint">可留空；留空时通知单用默认要求“按有关安全生产法律法规和标准规范立即整改”。</div>
   </div>
 
   <div class="section">
@@ -204,11 +214,11 @@
   </div>
 </section>
 
-<!-- 设置 -->
+<!-- 本次检查信息 -->
 <section id="viewSettings" class="hidden" style="position:fixed;inset:0;z-index:35;background:var(--bg);overflow-y:auto;padding-bottom:40px">
   <header>
     <button class="iconbtn" id="btnSetBack" aria-label="返回">←</button>
-    <div class="titles"><h1>我的设置</h1><div class="sub">新建批次时自动带出，手机上只需填一次</div></div>
+    <div class="titles"><h1>本次检查信息</h1><div class="sub">写进通知单的表头和落款</div></div>
   </header>
   <div class="section">
     <h3>受查单位</h3>
@@ -217,19 +227,31 @@
     <div class="field"><label>检查单位</label><input id="cfgIssue" placeholder="如：驻矿组"></div>
   </div>
   <div class="section">
-    <h3>检查信息</h3>
-    <input id="cfgInspectors" placeholder="检查人，如：许书林、刘家庆">
+    <h3>检查情况</h3>
+    <div class="row2">
+      <div style="flex:1"><label>检查日期</label><input id="cfgDate" type="date"></div>
+      <div style="flex:1"><label>整改期限（天）</label><input id="cfgDays" type="number" min="1" max="365" inputmode="numeric"></div>
+    </div>
+    <div class="hint" id="cfgDeadlineHint"></div>
+    <div class="field"><label>检查人</label><input id="cfgInspectors" placeholder="如：许书林、刘家庆"></div>
     <div class="field"><label>检查地点</label><input id="cfgLocation" placeholder="如：甲子背稀土矿选矿厂"></div>
     <div class="row2 field">
       <div style="flex:1"><label>检查类型</label>
         <select id="cfgType"><option>一般检查</option><option>专项检查</option></select>
       </div>
-      <div style="flex:1"><label>整改期限（天）</label><input id="cfgDays" type="number" min="1" max="365" inputmode="numeric"></div>
     </div>
     <div class="field"><label>专项名称（专项检查才填）</label><input id="cfgSpecial" placeholder="如：消防安全专项检查"></div>
   </div>
   <div class="section">
-    <button class="btn primary block" id="btnSaveCfg">保存设置</button>
+    <h3>整改要求（补充）</h3>
+    <textarea id="cfgRequirement" placeholder="会接在每条隐患的措施后面，不编号"></textarea>
+    <div class="field"><label>受查单位意见（可空）</label><textarea id="cfgOpinion" placeholder="留空则通知单里留手写空间"></textarea></div>
+  </div>
+  <div class="section">
+    <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)">
+      <input type="checkbox" id="cfgRemember" checked style="width:18px;height:18px;flex:0 0 auto"> 同时存为下次默认值
+    </label>
+    <button class="btn primary block" id="btnSaveCfg" style="margin-top:12px">保存</button>
     <p class="hint">也可以在电脑端点“生成手机配置二维码”，手机扫码自动填好这些内容。</p>
   </div>
 </section>
@@ -242,6 +264,7 @@
 <div id="loading" class="loading hidden">处理中…</div>
 
 <script src="core.js"></script>
+<script src="docx.js"></script>
 <script>
 (function () {
   'use strict';
@@ -341,7 +364,9 @@
         location: cfg.location || '',
         check_type: cfg.check_type || '一般检查',
         special_name: cfg.special_name || '',
-        deadline_days: Number(cfg.deadline_days) || 7
+        deadline_days: Number(cfg.deadline_days) || 7,
+        requirement: '',
+        receiver_opinion: ''
       },
       hazards: []
     };
@@ -452,11 +477,17 @@
     if (room <= 0) { toast('这条隐患已有 6 张照片'); return; }
     var list = Array.prototype.slice.call(files, 0, room);
     if (list.length < files.length) toast('每条最多 6 张，多出的已忽略');
+    var seen = {};
+    existing.forEach(function (p) { if (p.sha1) seen[p.sha1] = 1; });
+    var added = 0;
     for (var i = 0; i < list.length; i++) {
       setLoading(true, '处理照片 ' + (i + 1) + '/' + list.length + '…');
       try {
         var c = await compressImage(list[i]);
-        var order = maxOrder + i + 1;
+        if (c.sha1 && seen[c.sha1]) { toast('这张照片已经在里面了'); continue; }
+        if (c.sha1) seen[c.sha1] = 1;
+        added += 1;
+        var order = maxOrder + added;
         var rec = {
           key: ed.hazardId + ':' + ed.phase + ':' + order,
           batchId: state.batch.id, hazardId: ed.hazardId, phase: ed.phase, order: order,
@@ -521,6 +552,7 @@
           '<div class="meta">' +
             '<span class="chip">' + (idx + 1) + '</span>' +
             '<span class="chip ' + (h.level === '重大' ? 'warn' : '') + '">' + C.escapeHtml(h.level || '一般') + '</span>' +
+            (h.measure ? '<span class="chip after">已填措施</span>' : '') +
             '<span>前 ' + before + ' 张</span>' +
             (after ? '<span class="chip after">后 ' + after + ' 张</span>' : '') +
           '</div>' +
@@ -569,6 +601,7 @@
 
   function fillEditForm(h) {
     $('inDesc').value = h.desc || '';
+    $('inMeasure').value = h.measure || '';
     $('inLocation').value = h.location || '';
     $('inResp').value = h.responsible || '';
     var level = h.level || '一般';
@@ -604,7 +637,7 @@
     var batch = state.batch;
     var id = nextHazardId(batch);
     var h = {
-      id: id, seq: batch.hazards.length + 1, desc: '', location: '',
+      id: id, seq: batch.hazards.length + 1, desc: '', measure: '', location: '',
       level: '一般', responsible: '', created: C.isoNow()
     };
     batch.hazards.push(h);
@@ -633,6 +666,7 @@
     var h = hazardById(state.editing.hazardId);
     if (!h) return null;
     h.desc = $('inDesc').value.trim();
+    h.measure = $('inMeasure').value.trim();
     h.location = $('inLocation').value.trim();
     h.responsible = $('inResp').value.trim();
     var on = $('segLevel').querySelector('.on');
@@ -694,7 +728,9 @@
         unit: batch.meta.unit, short_unit: batch.meta.short_unit,
         issue_unit: batch.meta.issue_unit, inspectors: batch.meta.inspectors,
         location: batch.meta.location, check_type: batch.meta.check_type,
-        special_name: batch.meta.special_name, deadline_days: batch.meta.deadline_days
+        special_name: batch.meta.special_name, deadline_days: batch.meta.deadline_days,
+        requirement: batch.meta.requirement || '',
+        receiver_opinion: batch.meta.receiver_opinion || ''
       },
       hazards: []
     };
@@ -705,7 +741,8 @@
         return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1);
       });
       var item = {
-        id: h.id, seq: h.seq, desc: h.desc, location: h.location, level: h.level,
+        id: h.id, seq: h.seq, desc: h.desc, measure: h.measure || '',
+        location: h.location, level: h.level,
         responsible: h.responsible, created: h.created, photos: []
       };
       var counter = { before: 0, after: 0 };
@@ -725,6 +762,36 @@
     return { parts: C.zipParts(files), count: payload.hazards.length, photos: photos.length };
   }
 
+  function blobToBase64(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader();
+      fr.onload = function () { res(String(fr.result).split(',')[1] || ''); };
+      fr.onerror = rej;
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  async function shareBytes(data, name, mime) {
+    var blob = (data instanceof Blob) ? data : new Blob([data], { type: mime });
+    if (window.SnapAndroid && window.SnapAndroid.shareFile) {
+      try {
+        window.SnapAndroid.shareFile(name, mime, await blobToBase64(blob));
+        return;
+      } catch (e) { console.warn('原生分享失败', e); }
+    }
+    var file = null;
+    try { file = new File([blob], name, { type: mime }); } catch (e) { file = null; }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { /* 用户取消 */ }
+    }
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+
   async function exportBatch() {
     if (!state.batch.hazards.length) { toast('还没有隐患可导出'); return; }
     setLoading(true, '正在打包…');
@@ -733,27 +800,61 @@
       var short = C.safeName(state.batch.meta.short_unit || state.batch.meta.unit || '随手拍');
       var fname = '随手拍_' + state.batch.meta.check_date.replace(/-/g, '') + '_' + short + '.zip';
       var blob = new Blob(out.parts, { type: 'application/zip' });
-      var file;
-      try { file = new File([blob], fname, { type: 'application/zip' }); } catch (e) { file = null; }
       setLoading(false);
-      if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: '随手拍批次', text: '隐患随手拍 ' + state.batch.meta.check_date });
-          markExported();
-          return;
-        } catch (e) { /* 用户取消则退回下载 */ }
-      }
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = fname;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      await shareBytes(blob, fname, 'application/zip');
       markExported();
       toast('已导出 ' + fname + '（' + C.formatBytes(blob.size) + '）');
     } catch (e) {
       setLoading(false);
       toast('导出失败：' + (e.message || e));
+    }
+  }
+
+  async function buildNoticePayload() {
+    var batch = state.batch;
+    var hazards = batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
+    var photos = [];
+    for (var i = 0; i < hazards.length; i++) {
+      var h = hazards[i];
+      var recs = photosOf(h.id, 'before');
+      if (!recs.length) continue;
+      var items = [];
+      for (var j = 0; j < recs.length; j++) {
+        var buf = await recs[j].blob.arrayBuffer();
+        items.push({ bytes: new Uint8Array(buf), w: recs[j].w, h: recs[j].h });
+      }
+      photos.push({ seq: i + 1, desc: h.desc, items: items });
+    }
+    return {
+      meta: batch.meta,
+      hazards: hazards.map(function (h, i) {
+        return { seq: i + 1, desc: h.desc, measure: h.measure || '' };
+      }),
+      photos: photos
+    };
+  }
+
+  async function exportNotice() {
+    var hazards = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
+    if (!hazards.length) { toast('还没有隐患，先拍一条'); return; }
+    if (!(state.batch.meta.unit || '').trim()) {
+      toast('请先填写受查单位');
+      openSettings();
+      return;
+    }
+    setLoading(true, '正在生成通知单…');
+    try {
+      var payload = await buildNoticePayload();
+      var bytes = window.SnapDocx.buildNotice(payload);
+      var name = window.SnapDocx.noticeFileName(payload.meta);
+      setLoading(false);
+      await shareBytes(bytes, name,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      toast('已生成 ' + name);
+    } catch (e) {
+      setLoading(false);
+      console.error(e);
+      toast('生成失败：' + (e.message || e));
     }
   }
 
@@ -780,14 +881,16 @@
     }).join('');
     openSheet(
       '<h4>当前批次</h4>' +
+      '<button id="mNotice">📄 导出通知单（Word）</button>' +
       '<button id="mExport">📦 导出批次包（zip）</button>' +
       '<button id="mNewBatch">🗓 新建批次</button>' +
       '<h4>历史批次（点一下切换）</h4>' + (list || '<button disabled>暂无</button>') +
       '<h4>其它</h4>' +
-      '<button id="mSettings">⚙ 我的设置</button>' +
+      '<button id="mSettings">⚙ 本次检查信息</button>' +
       '<button id="mStorage">💾 存储占用 / 清理</button>' +
       '<button id="mClose">关闭</button>'
     );
+    $('mNotice').onclick = function () { closeSheet(); exportNotice(); };
     $('mExport').onclick = function () { closeSheet(); exportBatch(); };
     $('mNewBatch').onclick = function () { closeSheet(); startNewBatch(); };
     $('mSettings').onclick = function () { closeSheet(); openSettings(); };
@@ -850,43 +953,57 @@
     };
   }
 
-  // ---------------- 设置 ----------------
+  // ---------------- 本次检查信息 ----------------
+  function updateDeadlineHint() {
+    var meta = state.batch.meta;
+    var days = Math.max(1, Math.min(365, Number($('cfgDays').value) || 7));
+    var base = SnapDocx._internal.parseDate($('cfgDate').value) || new Date();
+    var d = SnapDocx._internal.addDays(base, days);
+    $('cfgDeadlineHint').textContent = '整改期限：' + SnapDocx._internal.fmtCN(d) + '前';
+  }
+
   function openSettings() {
-    var c = state.cfg;
-    $('cfgUnit').value = c.unit || '';
-    $('cfgShort').value = c.short_unit || '';
-    $('cfgIssue').value = c.issue_unit || '';
-    $('cfgInspectors').value = c.inspectors || '';
-    $('cfgLocation').value = c.location || '';
-    $('cfgType').value = c.check_type || '一般检查';
-    $('cfgDays').value = c.deadline_days || 7;
-    $('cfgSpecial').value = c.special_name || '';
+    var m = state.batch.meta;
+    $('cfgUnit').value = m.unit || '';
+    $('cfgShort').value = m.short_unit || '';
+    $('cfgIssue').value = m.issue_unit || '';
+    $('cfgInspectors').value = m.inspectors || '';
+    $('cfgLocation').value = m.location || '';
+    $('cfgType').value = m.check_type || '一般检查';
+    $('cfgDate').value = m.check_date || C.todayStr();
+    $('cfgDays').value = m.deadline_days || 7;
+    $('cfgSpecial').value = m.special_name || '';
+    $('cfgRequirement').value = m.requirement || '';
+    $('cfgOpinion').value = m.receiver_opinion || '';
+    $('cfgRemember').checked = true;
+    updateDeadlineHint();
     showView('settings');
   }
 
   function saveSettings() {
-    saveCfg({
-      unit: $('cfgUnit').value.trim(),
-      short_unit: $('cfgShort').value.trim(),
-      issue_unit: $('cfgIssue').value.trim(),
-      inspectors: $('cfgInspectors').value.trim(),
-      location: $('cfgLocation').value.trim(),
-      check_type: $('cfgType').value,
-      special_name: $('cfgSpecial').value.trim(),
-      deadline_days: Number($('cfgDays').value) || 7,
-      locations: state.cfg.locations || []
-    });
-    // 当前批次还没内容时，同步更新基础信息
-    if (state.batch && !state.batch.hazards.length) {
-      var m = state.batch.meta;
-      m.unit = state.cfg.unit; m.short_unit = state.cfg.short_unit;
-      m.issue_unit = state.cfg.issue_unit; m.inspectors = state.cfg.inspectors;
-      m.location = state.cfg.location; m.check_type = state.cfg.check_type;
-      m.special_name = state.cfg.special_name; m.deadline_days = state.cfg.deadline_days;
-      saveBatch();
+    var m = state.batch.meta;
+    m.unit = $('cfgUnit').value.trim();
+    m.short_unit = $('cfgShort').value.trim();
+    m.issue_unit = $('cfgIssue').value.trim();
+    m.inspectors = $('cfgInspectors').value.trim();
+    m.location = $('cfgLocation').value.trim();
+    m.check_type = $('cfgType').value;
+    m.check_date = $('cfgDate').value || C.todayStr();
+    m.deadline_days = Math.max(1, Math.min(365, Number($('cfgDays').value) || 7));
+    m.special_name = $('cfgSpecial').value.trim();
+    m.requirement = $('cfgRequirement').value.trim();
+    m.receiver_opinion = $('cfgOpinion').value.trim();
+    saveBatch();
+    if ($('cfgRemember').checked) {
+      saveCfg({
+        unit: m.unit, short_unit: m.short_unit, issue_unit: m.issue_unit,
+        inspectors: m.inspectors, location: m.location, check_type: m.check_type,
+        special_name: m.special_name, deadline_days: m.deadline_days,
+        locations: state.cfg.locations || []
+      });
     }
     showView('home');
-    toast('设置已保存');
+    toast('已保存本次检查信息');
   }
 
   // ---------------- 离线状态 ----------------
@@ -962,6 +1079,10 @@
     $('btnDeleteHazard').addEventListener('click', deleteHazard);
     $('btnSetBack').addEventListener('click', function () { showView('home'); });
     $('btnSaveCfg').addEventListener('click', saveSettings);
+    $('btnPhotoCamera').addEventListener('click', function () { $('fileCamera').click(); });
+    $('btnPhotoAlbum').addEventListener('click', function () { $('filePick').click(); });
+    $('cfgDate').addEventListener('change', updateDeadlineHint);
+    $('cfgDays').addEventListener('input', updateDeadlineHint);
 
     Array.prototype.forEach.call($('segLevel').children, function (b) {
       b.addEventListener('click', function () {
