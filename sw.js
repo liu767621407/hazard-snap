@@ -1,12 +1,13 @@
 /* 隐患随手拍 · Service Worker（离线缓存）
  * 更新：改 VERSION 即可；新版本会立即接管，下次打开页面生效。
  */
-const VERSION = 'snap-1.1.0';
+const VERSION = 'snap-1.2.0';
 const ASSETS = [
   './',
   './index.html',
   './core.js',
   './docx.js',
+  './pdf.js',
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png'

@@ -108,6 +108,23 @@
   .toast.show{opacity:1}
   .loading{position:fixed;inset:0;z-index:70;background:rgba(255,255,255,.72);display:grid;place-items:center;font-size:15px;color:var(--blue)}
   .fatal{position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:99;background:#c0392b;color:#fff;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+
+  .linkbtn{margin-left:auto;font-size:13px;color:var(--accent);padding:4px 6px}
+  .selbar{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin:0 0 10px}
+  .selbar span{flex:1;text-align:center;font-size:14px;color:var(--muted)}
+  .selbar .btn{padding:8px 12px;font-size:14px}
+  .card .check{width:24px;height:24px;flex:0 0 24px;border-radius:50%;border:2px solid #c3d0de;align-self:center;display:grid;place-items:center;color:#fff;font-size:14px}
+  .card.sel .check{background:var(--accent);border-color:var(--accent)}
+  .card.sel{border-color:rgba(22,104,214,.5);background:#f7fbff}
+
+  .exportrow{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #eef2f7}
+  .exportrow:last-child{border-bottom:0}
+  .exportrow .ico{width:42px;height:42px;flex:0 0 42px;border-radius:12px;background:#eef3f8;display:grid;place-items:center;font-size:20px}
+  .exportrow .txt{flex:1;min-width:0}
+  .exportrow .txt b{display:block;font-size:15px}
+  .exportrow .txt small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .exportrow .btn{flex:0 0 auto;padding:9px 12px;font-size:14px}
+  #viewExport{position:fixed;inset:0;z-index:36;background:var(--bg);overflow-y:auto;padding-bottom:40px}
 </style>
 </head>
 <body>
@@ -141,12 +158,19 @@
 </header>
 
 <main>
+  <div class="selbar hidden" id="selBar">
+    <button class="btn small" id="btnSelAll">全选</button>
+    <span id="selCount">已选 0 条</span>
+    <button class="btn small danger" id="btnSelDelete">删除</button>
+    <button class="btn small" id="btnSelDone">完成</button>
+  </div>
   <div class="statbar">
     <span>已拍 <b id="statCount">0</b> 条</span>
     <span>·</span>
     <span><b id="statPhotos">0</b> 张照片</span>
     <span>·</span>
     <span id="statSize">0 MB</span>
+    <button class="linkbtn" id="btnManage">管理</button>
   </div>
   <div id="hazardList" class="list"></div>
   <div id="emptyHome" class="empty hidden">还没有拍隐患。<br>点下面的“＋ 拍一条隐患”，横持手机拍 4:3 照片。</div>
@@ -161,7 +185,6 @@
   <header>
     <button class="iconbtn" id="btnBack" aria-label="返回">←</button>
     <div class="titles"><h1 id="editTitle">新隐患</h1><div class="sub" id="editSub"></div></div>
-    <button class="iconbtn" id="btnDeleteHazard" aria-label="删除">🗑</button>
   </header>
 
   <div class="tabs" id="phaseTabs">
@@ -214,14 +237,14 @@
   </div>
 </section>
 
-<!-- 本次检查信息 -->
+<!-- 新建检查 / 本次检查信息 -->
 <section id="viewSettings" class="hidden" style="position:fixed;inset:0;z-index:35;background:var(--bg);overflow-y:auto;padding-bottom:40px">
   <header>
     <button class="iconbtn" id="btnSetBack" aria-label="返回">←</button>
-    <div class="titles"><h1>本次检查信息</h1><div class="sub">写进通知单的表头和落款</div></div>
+    <div class="titles"><h1 id="setupTitle">新建检查</h1><div class="sub" id="setupSub">先填检查信息，再逐条拍隐患</div></div>
   </header>
   <div class="section">
-    <h3>受查单位</h3>
+    <h3>受查单位 <span style="color:var(--danger)">*</span></h3>
     <input id="cfgUnit" placeholder="单位全称">
     <div class="field"><label>单位简称</label><input id="cfgShort" placeholder="如：甲子背稀土矿"></div>
     <div class="field"><label>检查单位</label><input id="cfgIssue" placeholder="如：驻矿组"></div>
@@ -243,7 +266,7 @@
     <div class="field"><label>专项名称（专项检查才填）</label><input id="cfgSpecial" placeholder="如：消防安全专项检查"></div>
   </div>
   <div class="section">
-    <h3>整改要求（补充）</h3>
+    <h3>整改要求（补充，可空）</h3>
     <textarea id="cfgRequirement" placeholder="会接在每条隐患的措施后面，不编号"></textarea>
     <div class="field"><label>受查单位意见（可空）</label><textarea id="cfgOpinion" placeholder="留空则通知单里留手写空间"></textarea></div>
   </div>
@@ -251,9 +274,39 @@
     <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)">
       <input type="checkbox" id="cfgRemember" checked style="width:18px;height:18px;flex:0 0 auto"> 同时存为下次默认值
     </label>
-    <button class="btn primary block" id="btnSaveCfg" style="margin-top:12px">保存</button>
+    <button class="btn primary block" id="btnSaveCfg" style="margin-top:12px">开始检查</button>
     <p class="hint">也可以在电脑端点“生成手机配置二维码”，手机扫码自动填好这些内容。</p>
   </div>
+</section>
+
+<!-- 导出 -->
+<section id="viewExport" class="hidden">
+  <header>
+    <button class="iconbtn" id="btnExportBack" aria-label="返回">←</button>
+    <div class="titles"><h1>导出 / 分享</h1><div class="sub" id="exportSub">生成后可直接发微信、QQ、邮件或存文件</div></div>
+  </header>
+  <div class="section">
+    <h3>整改通知单</h3>
+    <div class="exportrow">
+      <div class="ico">📄</div>
+      <div class="txt"><b>Word 版（.docx）</b><small>可编辑、可打印，电脑端同版式</small></div>
+      <button class="btn primary" id="btnExportDocx">生成</button>
+    </div>
+    <div class="exportrow">
+      <div class="ico">📕</div>
+      <div class="txt"><b>PDF 版（.pdf）</b><small>直接发对方/打印，不用装 Word</small></div>
+      <button class="btn primary" id="btnExportPdf">生成</button>
+    </div>
+  </div>
+  <div class="section">
+    <h3>数据包（给电脑端）</h3>
+    <div class="exportrow">
+      <div class="ico">📦</div>
+      <div class="txt"><b>批次包（.zip）</b><small>电脑端“工具 → 导入随手拍包”用</small></div>
+      <button class="btn" id="btnExportZip">生成</button>
+    </div>
+  </div>
+  <p class="hint" style="margin:12px">生成后弹出系统分享面板：选微信 → 文件传输助手/好友，或“保存到文件”。</p>
 </section>
 
 <div id="mask" class="mask hidden">
@@ -265,6 +318,7 @@
 
 <script src="core.js"></script>
 <script src="docx.js"></script>
+<script src="pdf.js"></script>
 <script>
 (function () {
   'use strict';
@@ -272,7 +326,10 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var state = { cfg: null, batch: null, photos: [], editing: null };
+  var state = {
+    cfg: null, batch: null, photos: [], editing: null,
+    selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
+  };
 
   function defaultCfg() {
     return { unit: '', short_unit: '', issue_unit: '', inspectors: '', location: '',
@@ -536,14 +593,19 @@
     var batch = state.batch;
     list.innerHTML = '';
     $('emptyHome').classList.toggle('hidden', batch.hazards.length > 0);
+    $('selBar').classList.toggle('hidden', !state.selecting);
+    $('btnManage').classList.toggle('hidden', state.selecting);
+    document.querySelector('.fabbar').classList.toggle('hidden', state.selecting);
     batch.hazards.forEach(function (h, idx) {
       var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
       var before = photosOf(h.id, 'before').length;
       var after = photosOf(h.id, 'after').length;
       var el = document.createElement('div');
-      el.className = 'card';
+      el.className = 'card' + (state.selected[h.id] ? ' sel' : '');
       var thumb = ph.length ? photoUrl(ph[0].thumb) : '';
-      el.innerHTML =
+      var check = state.selecting
+        ? '<div class="check">' + (state.selected[h.id] ? '✓' : '') + '</div>' : '';
+      el.innerHTML = check +
         '<div class="thumb" style="' + (thumb ? "background-image:url('" + thumb + "')" : '') + '">' +
           (thumb ? '' : '<div class="nophoto">无照片</div>') +
         '</div>' +
@@ -558,8 +620,10 @@
           '</div>' +
           (h.location ? '<div class="meta">' + C.escapeHtml(h.location) + '</div>' : '') +
         '</div>' +
-        '<div class="arrow">›</div>';
-      el.addEventListener('click', function () { openEdit(h.id); });
+        (state.selecting ? '' : '<div class="arrow">›</div>');
+      el.addEventListener('click', function () {
+        if (state.selecting) { toggleSelected(h.id); } else { openEdit(h.id); }
+      });
       list.appendChild(el);
     });
 
@@ -569,7 +633,57 @@
     $('statCount').textContent = n;
     $('statPhotos').textContent = photos;
     $('statSize').textContent = C.formatBytes(bytes);
+    updateSelCount();
     renderHeader();
+  }
+
+  // ---------------- 管理（多选 / 批量删除） ----------------
+  function setSelecting(on) {
+    state.selecting = !!on;
+    state.selected = {};
+    renderHome();
+  }
+
+  function toggleSelected(id) {
+    if (state.selected[id]) delete state.selected[id];
+    else state.selected[id] = true;
+    renderHome();
+  }
+
+  function selectedIds() {
+    return Object.keys(state.selected).filter(function (k) { return state.selected[k]; });
+  }
+
+  function updateSelCount() {
+    var n = selectedIds().length;
+    $('selCount').textContent = '已选 ' + n + ' 条';
+    $('btnSelDelete').disabled = n === 0;
+  }
+
+  function selectAllToggle() {
+    var ids = state.batch.hazards.map(function (h) { return h.id; });
+    var all = ids.length > 0 && ids.every(function (id) { return state.selected[id]; });
+    state.selected = {};
+    if (!all) ids.forEach(function (id) { state.selected[id] = true; });
+    renderHome();
+  }
+
+  async function deleteSelected() {
+    var ids = selectedIds();
+    if (!ids.length) return;
+    if (!confirm('删除选中的 ' + ids.length + ' 条隐患及其照片？')) return;
+    var keep = [];
+    for (var i = 0; i < state.batch.hazards.length; i++) {
+      var h = state.batch.hazards[i];
+      if (selectedIds().indexOf(h.id) < 0) { keep.push(h); continue; }
+      var recs = photosOf(h.id);
+      for (var j = 0; j < recs.length; j++) { await dbDel('photos', recs[j].key); }
+      state.photos = state.photos.filter(function (p) { return p.hazardId !== h.id; });
+    }
+    state.batch.hazards = keep;
+    await saveBatch();
+    setSelecting(false);
+    toast('已删除 ' + ids.length + ' 条');
   }
 
   function renderPhotos() {
@@ -656,8 +770,9 @@
     document.body.dataset.view = name;
     $('viewEdit').classList.toggle('hidden', name !== 'edit');
     $('viewSettings').classList.toggle('hidden', name !== 'settings');
+    $('viewExport').classList.toggle('hidden', name !== 'export');
     $('topbar').classList.toggle('hidden', name !== 'home');
-    document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home');
+    document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home' || state.selecting);
     if (name === 'home') renderHome();
   }
 
@@ -698,19 +813,6 @@
       showView('home');
       toast('已保存');
     }
-  }
-
-  async function deleteHazard() {
-    var h = hazardById(state.editing.hazardId);
-    if (!h) return;
-    if (!confirm('删除这条隐患及其照片？')) return;
-    state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
-    var recs = photosOf(h.id);
-    for (var i = 0; i < recs.length; i++) { await dbDel('photos', recs[i].key); }
-    state.photos = state.photos.filter(function (p) { return p.hazardId !== h.id; });
-    await saveBatch();
-    showView('home');
-    toast('已删除');
   }
 
   // ---------------- 导出 ----------------
@@ -839,7 +941,7 @@
     if (!hazards.length) { toast('还没有隐患，先拍一条'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
-      openSettings();
+      openSetup('edit');
       return;
     }
     setLoading(true, '正在生成通知单…');
@@ -856,6 +958,37 @@
       console.error(e);
       toast('生成失败：' + (e.message || e));
     }
+  }
+
+  async function exportPdf() {
+    var hazards = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
+    if (!hazards.length) { toast('还没有隐患，先拍一条'); return; }
+    if (!(state.batch.meta.unit || '').trim()) {
+      toast('请先填写受查单位');
+      openSetup('edit');
+      return;
+    }
+    setLoading(true, '正在生成 PDF…');
+    try {
+      var payload = await buildNoticePayload();
+      var bytes = await window.SnapPdf.buildNoticePdf(payload);
+      var name = window.SnapDocx.noticeFileName(payload.meta).replace(/\.docx$/i, '.pdf');
+      setLoading(false);
+      await shareBytes(bytes, name, 'application/pdf');
+      toast('已生成 ' + name + '（' + C.formatBytes(bytes.length) + '）');
+    } catch (e) {
+      setLoading(false);
+      console.error(e);
+      toast('PDF 生成失败：' + (e.message || e));
+    }
+  }
+
+  function openExport() {
+    var n = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); }).length;
+    $('exportSub').textContent = n
+      ? (n + ' 条隐患 · 生成后可直接发微信/QQ/邮件')
+      : '还没有隐患';
+    showView('export');
   }
 
   async function markExported() {
@@ -881,19 +1014,19 @@
     }).join('');
     openSheet(
       '<h4>当前批次</h4>' +
-      '<button id="mNotice">📄 导出通知单（Word）</button>' +
-      '<button id="mExport">📦 导出批次包（zip）</button>' +
-      '<button id="mNewBatch">🗓 新建批次</button>' +
+      '<button id="mExport">📤 导出 / 分享</button>' +
+      '<button id="mManage">☑ 管理隐患（多选删除）</button>' +
+      '<button id="mSettings">⚙ 本次检查信息</button>' +
+      '<button id="mNewBatch">🗓 新建检查</button>' +
       '<h4>历史批次（点一下切换）</h4>' + (list || '<button disabled>暂无</button>') +
       '<h4>其它</h4>' +
-      '<button id="mSettings">⚙ 本次检查信息</button>' +
       '<button id="mStorage">💾 存储占用 / 清理</button>' +
       '<button id="mClose">关闭</button>'
     );
-    $('mNotice').onclick = function () { closeSheet(); exportNotice(); };
-    $('mExport').onclick = function () { closeSheet(); exportBatch(); };
-    $('mNewBatch').onclick = function () { closeSheet(); startNewBatch(); };
-    $('mSettings').onclick = function () { closeSheet(); openSettings(); };
+    $('mExport').onclick = function () { closeSheet(); openExport(); };
+    $('mManage').onclick = function () { closeSheet(); setSelecting(true); };
+    $('mSettings').onclick = function () { closeSheet(); openSetup('edit'); };
+    $('mNewBatch').onclick = function () { closeSheet(); openSetup('new'); };
     $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
     $('mClose').onclick = closeSheet;
     Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
@@ -907,17 +1040,6 @@
     state.batch = b;
     await refreshPhotos();
     showView('home');
-  }
-
-  async function startNewBatch() {
-    var current = state.batch;
-    if (current && current.hazards.length && !confirm('新建批次会切换到新的一份文书，当前批次仍可在“历史批次”里找回。继续？')) return;
-    var b = newBatchMeta(state.cfg);
-    await dbPut('batches', b);
-    state.batch = b;
-    state.photos = [];
-    showView('home');
-    toast('已新建批次 ' + b.meta.check_date);
   }
 
   async function storageInfo() {
@@ -953,55 +1075,85 @@
     };
   }
 
-  // ---------------- 本次检查信息 ----------------
+  // ---------------- 新建检查 / 本次检查信息 ----------------
   function updateDeadlineHint() {
-    var meta = state.batch.meta;
     var days = Math.max(1, Math.min(365, Number($('cfgDays').value) || 7));
     var base = SnapDocx._internal.parseDate($('cfgDate').value) || new Date();
     var d = SnapDocx._internal.addDays(base, days);
     $('cfgDeadlineHint').textContent = '整改期限：' + SnapDocx._internal.fmtCN(d) + '前';
   }
 
-  function openSettings() {
-    var m = state.batch.meta;
-    $('cfgUnit').value = m.unit || '';
-    $('cfgShort').value = m.short_unit || '';
-    $('cfgIssue').value = m.issue_unit || '';
-    $('cfgInspectors').value = m.inspectors || '';
-    $('cfgLocation').value = m.location || '';
-    $('cfgType').value = m.check_type || '一般检查';
-    $('cfgDate').value = m.check_date || C.todayStr();
-    $('cfgDays').value = m.deadline_days || 7;
-    $('cfgSpecial').value = m.special_name || '';
-    $('cfgRequirement').value = m.requirement || '';
-    $('cfgOpinion').value = m.receiver_opinion || '';
-    $('cfgRemember').checked = true;
+  function openSetup(mode) {
+    state.setupMode = mode;
+    var meta;
+    if (mode === 'new') {
+      state.setupDraft = newBatchMeta(state.cfg);
+      meta = state.setupDraft.meta;
+    } else {
+      meta = state.batch.meta;
+    }
+    $('setupTitle').textContent = mode === 'new' ? '新建检查' : '本次检查信息';
+    $('setupSub').textContent = mode === 'new' ? '先填检查信息，再逐条拍隐患' : '写进通知单的表头和落款';
+    $('btnSaveCfg').textContent = mode === 'new' ? '开始检查' : '保存';
+    $('btnSetBack').style.visibility = (mode === 'new' && !state.batch) ? 'hidden' : 'visible';
+
+    $('cfgUnit').value = meta.unit || '';
+    $('cfgShort').value = meta.short_unit || '';
+    $('cfgIssue').value = meta.issue_unit || '';
+    $('cfgInspectors').value = meta.inspectors || '';
+    $('cfgLocation').value = meta.location || '';
+    $('cfgType').value = meta.check_type || '一般检查';
+    $('cfgDate').value = meta.check_date || C.todayStr();
+    $('cfgDays').value = meta.deadline_days || 7;
+    $('cfgSpecial').value = meta.special_name || '';
+    $('cfgRequirement').value = meta.requirement || '';
+    $('cfgOpinion').value = meta.receiver_opinion || '';
+    $('cfgRemember').checked = mode === 'edit';
     updateDeadlineHint();
     showView('settings');
   }
 
-  function saveSettings() {
-    var m = state.batch.meta;
-    m.unit = $('cfgUnit').value.trim();
-    m.short_unit = $('cfgShort').value.trim();
-    m.issue_unit = $('cfgIssue').value.trim();
-    m.inspectors = $('cfgInspectors').value.trim();
-    m.location = $('cfgLocation').value.trim();
-    m.check_type = $('cfgType').value;
-    m.check_date = $('cfgDate').value || C.todayStr();
-    m.deadline_days = Math.max(1, Math.min(365, Number($('cfgDays').value) || 7));
-    m.special_name = $('cfgSpecial').value.trim();
-    m.requirement = $('cfgRequirement').value.trim();
-    m.receiver_opinion = $('cfgOpinion').value.trim();
-    saveBatch();
+  function saveSetup() {
+    var isNew = state.setupMode === 'new';
+    var meta = isNew ? state.setupDraft.meta : state.batch.meta;
+    meta.unit = $('cfgUnit').value.trim();
+    meta.short_unit = $('cfgShort').value.trim();
+    meta.issue_unit = $('cfgIssue').value.trim();
+    meta.inspectors = $('cfgInspectors').value.trim();
+    meta.location = $('cfgLocation').value.trim();
+    meta.check_type = $('cfgType').value;
+    meta.check_date = $('cfgDate').value || C.todayStr();
+    meta.deadline_days = Math.max(1, Math.min(365, Number($('cfgDays').value) || 7));
+    meta.special_name = $('cfgSpecial').value.trim();
+    meta.requirement = $('cfgRequirement').value.trim();
+    meta.receiver_opinion = $('cfgOpinion').value.trim();
+
+    if (!meta.unit) {
+      toast('请填写受查单位');
+      $('cfgUnit').focus();
+      return;
+    }
     if ($('cfgRemember').checked) {
       saveCfg({
-        unit: m.unit, short_unit: m.short_unit, issue_unit: m.issue_unit,
-        inspectors: m.inspectors, location: m.location, check_type: m.check_type,
-        special_name: m.special_name, deadline_days: m.deadline_days,
+        unit: meta.unit, short_unit: meta.short_unit, issue_unit: meta.issue_unit,
+        inspectors: meta.inspectors, location: meta.location, check_type: meta.check_type,
+        special_name: meta.special_name, deadline_days: meta.deadline_days,
         locations: state.cfg.locations || []
       });
     }
+    if (isNew) {
+      var b = state.setupDraft;
+      b.meta = meta;
+      b.updated = C.isoNow();
+      dbPut('batches', b).then(function () {
+        state.batch = b;
+        state.photos = [];
+        showView('home');
+        toast('已开始检查：' + (meta.short_unit || meta.unit));
+      });
+      return;
+    }
+    saveBatch();
     showView('home');
     toast('已保存本次检查信息');
   }
@@ -1049,12 +1201,11 @@
     batches.sort(function (a, b) { return (b.updated || '').localeCompare(a.updated || ''); });
     if (batches.length) {
       state.batch = batches[0];
+      await refreshPhotos();
+      showView('home');
     } else {
-      state.batch = newBatchMeta(state.cfg);
-      await dbPut('batches', state.batch);
+      openSetup('new');
     }
-    await refreshPhotos();
-    showView('home');
     updateBadge();
   }
 
@@ -1076,9 +1227,16 @@
     });
     $('btnSaveBack').addEventListener('click', function () { saveEdit(false); });
     $('btnSaveNext').addEventListener('click', function () { saveEdit(true); });
-    $('btnDeleteHazard').addEventListener('click', deleteHazard);
     $('btnSetBack').addEventListener('click', function () { showView('home'); });
-    $('btnSaveCfg').addEventListener('click', saveSettings);
+    $('btnSaveCfg').addEventListener('click', saveSetup);
+    $('btnManage').addEventListener('click', function () { setSelecting(true); });
+    $('btnSelAll').addEventListener('click', selectAllToggle);
+    $('btnSelDelete').addEventListener('click', deleteSelected);
+    $('btnSelDone').addEventListener('click', function () { setSelecting(false); });
+    $('btnExportBack').addEventListener('click', function () { showView('home'); });
+    $('btnExportDocx').addEventListener('click', exportNotice);
+    $('btnExportPdf').addEventListener('click', exportPdf);
+    $('btnExportZip').addEventListener('click', exportBatch);
     $('btnPhotoCamera').addEventListener('click', function () { $('fileCamera').click(); });
     $('btnPhotoAlbum').addEventListener('click', function () { $('filePick').click(); });
     $('cfgDate').addEventListener('change', updateDeadlineHint);
