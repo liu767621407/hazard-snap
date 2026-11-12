@@ -326,10 +326,21 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
+  var WEB_VERSION = '1.9.2';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
   };
+
+  function versionText() {
+    var app = '';
+    try {
+      if (window.SnapAndroid && window.SnapAndroid.appVersion) {
+        app = 'App ' + window.SnapAndroid.appVersion() + ' · ';
+      }
+    } catch (e) {}
+    return app + '网页 ' + WEB_VERSION;
+  }
 
   function defaultCfg() {
     return { unit: '', short_unit: '', issue_unit: '', inspectors: '', location: '',
@@ -1033,6 +1044,7 @@
       '<h4>历史批次（点一下切换）</h4>' + (list || '<button disabled>暂无</button>') +
       '<h4>其它</h4>' +
       '<button id="mStorage">💾 存储占用 / 清理</button>' +
+      '<button disabled style="color:#66788a;font-size:13px">📱 版本：' + C.escapeHtml(versionText()) + '</button>' +
       '<button id="mClose">关闭</button>'
     );
     $('mExport').onclick = function () { closeSheet(); openExport(); };
