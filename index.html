@@ -326,7 +326,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.9.2';
+  var WEB_VERSION = '1.9.3';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1107,8 +1107,9 @@
     $('cfgDeadlineHint').textContent = '整改期限：' + SnapDocx._internal.fmtCN(d) + '前';
   }
 
-  function openSetup(mode) {
+  function openSetup(mode, fromBack) {
     state.setupMode = mode;
+    state.setupFromBack = !!fromBack;
     var meta;
     if (mode === 'new') {
       state.setupDraft = newBatchMeta(state.cfg);
@@ -1307,11 +1308,17 @@
       if (view === 'edit') { $('btnBack').click(); return true; }
       if (view === 'export') { showView('home'); return true; }
       if (view === 'settings') {
+        // 从清单按返回进来的：再按一次就退出；从菜单进来的：回清单
+        if (state.setupFromBack) return false;
         if (state.setupMode === 'new' && !state.batch) return false;
         showView('home');
         return true;
       }
       if (state.selecting) { setSelecting(false); return true; }
+      if (view === 'home' && state.batch) {
+        openSetup('edit', true);   // 清单的上一级 = 本次检查信息
+        return true;
+      }
     } catch (e) { console.warn('SnapBack', e); }
     return false;
   };
