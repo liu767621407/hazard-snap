@@ -773,8 +773,20 @@
     $('viewExport').classList.toggle('hidden', name !== 'export');
     $('topbar').classList.toggle('hidden', name !== 'home');
     document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home' || state.selecting);
+    // Chrome/PWA：用 history 让系统返回键回到上一级（APK 里走 SnapBack，不重复记历史）
+    if (!window.SnapAndroid && name !== 'home' && state.batch) {
+      try { history.pushState({ snapView: name }, ''); } catch (e) {}
+    }
     if (name === 'home') renderHome();
   }
+
+  // Chrome/PWA 的返回键
+  window.addEventListener('popstate', function () {
+    var v = document.body.dataset.view;
+    if (v === 'home' || !state.batch) return;
+    if (v === 'edit') { $('btnBack').click(); return; }
+    showView('home');
+  });
 
   // ---------------- 保存 ----------------
   function readForm() {
