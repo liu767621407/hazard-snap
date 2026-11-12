@@ -1275,6 +1275,23 @@
   }
 
   // ---------------- 启动 ----------------
+  // 安卓返回键：先回上一级菜单，不直接退出
+  window.SnapBack = function () {
+    try {
+      if (!$('mask').classList.contains('hidden')) { closeSheet(); return true; }
+      var view = document.body.dataset.view;
+      if (view === 'edit') { $('btnBack').click(); return true; }
+      if (view === 'export') { showView('home'); return true; }
+      if (view === 'settings') {
+        if (state.setupMode === 'new' && !state.batch) return false;
+        showView('home');
+        return true;
+      }
+      if (state.selecting) { setSelecting(false); return true; }
+    } catch (e) { console.warn('SnapBack', e); }
+    return false;
+  };
+
   if (!window.SnapCore) {
     var el = $('fatal');
     el.textContent = '出错了：core.js 没有加载成功，请刷新页面重试。';
