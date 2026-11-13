@@ -326,11 +326,15 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.9.4';
+  var WEB_VERSION = '1.9.5';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
   };
+
+  function hasUpdateBridge() {
+    try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
+  }
 
   function versionText() {
     var app = '';
@@ -1044,6 +1048,7 @@
       '<h4>历史批次（点一下切换）</h4>' + (list || '<button disabled>暂无</button>') +
       '<h4>其它</h4>' +
       '<button id="mStorage">💾 存储占用 / 清理</button>' +
+      (hasUpdateBridge() ? '<button id="mUpdate">🔄 检查更新</button>' : '') +
       '<button disabled style="color:#66788a;font-size:13px">📱 版本：' + C.escapeHtml(versionText()) + '</button>' +
       '<button id="mClose">关闭</button>'
     );
@@ -1052,6 +1057,13 @@
     $('mSettings').onclick = function () { closeSheet(); openSetup('edit'); };
     $('mNewBatch').onclick = function () { closeSheet(); openSetup('new'); };
     $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
+    var upd = $('mUpdate');
+    if (upd) {
+      upd.onclick = function () {
+        closeSheet();
+        try { window.SnapAndroid.checkUpdate(); } catch (e) { toast('检查更新失败'); }
+      };
+    }
     $('mClose').onclick = closeSheet;
     Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
       b.onclick = function () { closeSheet(); switchBatch(b.dataset.batch); };
