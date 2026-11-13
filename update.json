@@ -1,0 +1,9 @@
+{
+  "versionCode": 7,
+  "versionName": "1.0.6",
+  "url": "apk/hazard-snap.apk",
+  "sha256": "53316f798cd46995b5ae0cee722528705f574ae151789ac73c8038f66a9fb954",
+  "size": 1538493,
+  "notes": "本次更新：验证 App 内更新通道（1.0.5 → 1.0.6），界面与 1.0.5 相同。",
+  "published": "2026-11-13"
+}
