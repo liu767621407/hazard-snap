@@ -215,7 +215,7 @@
 
   <div class="section">
     <h3>位置</h3>
-    <input id="inLocation" list="locationList" placeholder="如：选矿厂压榨房">
+    <input id="inLocation" list="locationList" placeholder="压榨房">
     <datalist id="locationList"></datalist>
     <div class="field">
       <label>隐患类别</label>
@@ -256,8 +256,8 @@
       <div style="flex:1"><label>整改期限（天）</label><input id="cfgDays" type="number" min="1" max="365" inputmode="numeric"></div>
     </div>
     <div class="hint" id="cfgDeadlineHint"></div>
-    <div class="field"><label>检查人</label><input id="cfgInspectors" placeholder="如：许书林、刘家庆"></div>
-    <div class="field"><label>检查地点</label><input id="cfgLocation" placeholder="如：甲子背稀土矿选矿厂"></div>
+    <div class="field"><label>检查人</label><input id="cfgInspectors" placeholder="检查人员姓名"></div>
+    <div class="field"><label>检查地点</label><input id="cfgLocation" placeholder="甲子背稀土矿"></div>
     <div class="row2 field">
       <div style="flex:1"><label>检查类型</label>
         <select id="cfgType"><option>一般检查</option><option>专项检查</option></select>
@@ -267,8 +267,8 @@
   </div>
   <div class="section">
     <h3>整改要求（补充，可空）</h3>
-    <textarea id="cfgRequirement" placeholder="会接在每条隐患的措施后面，不编号"></textarea>
-    <div class="field"><label>受查单位意见（可空）</label><textarea id="cfgOpinion" placeholder="留空则通知单里留手写空间"></textarea></div>
+    <textarea id="cfgRequirement" placeholder="如：问题1、2限期xx完成整改"></textarea>
+    <div class="field"><label>受查单位意见（可空）</label><textarea id="cfgOpinion" placeholder="如：按期整改"></textarea></div>
   </div>
   <div class="section">
     <label style="display:flex;gap:8px;align-items:center;font-size:14px;color:var(--text)">
@@ -326,7 +326,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.9.3';
+  var WEB_VERSION = '1.9.4';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
