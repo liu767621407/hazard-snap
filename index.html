@@ -173,11 +173,11 @@
     <button class="linkbtn" id="btnManage">管理</button>
   </div>
   <div id="hazardList" class="list"></div>
-  <div id="emptyHome" class="empty hidden">还没有拍隐患。<br>点下面的“＋ 拍一条隐患”，横持手机拍 4:3 照片。</div>
+  <div id="emptyHome" class="empty hidden">还没有拍隐患。<br>点下面的“📷 拍照”，横持手机拍 4:3 照片。</div>
 </main>
 
 <div class="fabbar">
-  <button class="btn primary block" id="btnNew">＋ 拍一条隐患</button>
+  <button class="btn primary block" id="btnNew">📷 拍照</button>
 </div>
 
 <!-- 编辑页 -->
@@ -326,11 +326,13 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.9.5';
+  var WEB_VERSION = '1.9.6';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
   };
+  var pendingQuick = false;
+  var quickTimer = null;
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -625,7 +627,7 @@
           (thumb ? '' : '<div class="nophoto">无照片</div>') +
         '</div>' +
         '<div class="info">' +
-          '<div class="desc' + (h.desc ? '' : ' empty') + '">' + C.escapeHtml(h.desc || '（未填写描述）') + '</div>' +
+          '<div class="desc' + (h.desc ? '' : ' empty') + '">' + C.escapeHtml(h.desc || '（未填写，点这里补充）') + '</div>' +
           '<div class="meta">' +
             '<span class="chip">' + (idx + 1) + '</span>' +
             '<span class="chip ' + (h.level === '重大' ? 'warn' : '') + '">' + C.escapeHtml(h.level || '一般') + '</span>' +
@@ -749,6 +751,7 @@
   function openEdit(hazardId) {
     var h = hazardById(hazardId);
     if (!h) return;
+    pendingQuick = false;
     state.editing = { hazardId: hazardId, phase: 'before' };
     var idx = state.batch.hazards.indexOf(h) + 1;
     $('editTitle').textContent = '隐患 ' + idx;
@@ -764,6 +767,7 @@
 
   async function startNew() {
     var batch = state.batch;
+    pendingQuick = false;
     var id = nextHazardId(batch);
     var h = {
       id: id, seq: batch.hazards.length + 1, desc: '', measure: '', location: '',
@@ -779,6 +783,34 @@
     renderPhotos();
     showView('edit');
     setTimeout(function () { $('inDesc').focus(); }, 250);
+  }
+
+  // 首页「📷 拍照」：直接开相机，拍完就存一条（不写描述也能存）
+  function quickCapture() {
+    if (!state.batch) return;
+    pendingQuick = true;
+    clearTimeout(quickTimer);
+    quickTimer = setTimeout(function () { pendingQuick = false; }, 120000);
+    $('fileCamera').click();
+  }
+
+  async function createHazardWithPhotos(files) {
+    var batch = state.batch;
+    var id = nextHazardId(batch);
+    var h = {
+      id: id, seq: batch.hazards.length + 1, desc: '', measure: '', location: '',
+      level: '一般', responsible: '', created: C.isoNow()
+    };
+    batch.hazards.push(h);
+    await saveBatch();
+    state.editing = { hazardId: id, phase: 'before' };
+    try {
+      await addPhotos(files);
+    } finally {
+      state.editing = null;
+    }
+    showView('home');
+    toast('照片已存，点这一条补描述即可');
   }
 
   function showView(name) {
@@ -820,22 +852,18 @@
     var h = readForm();
     if (!h) return;
     var photos = photosOf(h.id).length;
-    if (!h.desc && !photos) {
-      // 空条目直接丢弃
+    if (!h.desc && !photos && !h.measure && !h.location && !h.responsible) {
+      // 什么都没有的条目直接丢弃
       state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
       await saveBatch();
       toast('已放弃空白条目');
       showView('home');
       return;
     }
-    if (!h.desc) {
-      toast('请填写隐患描述（有照片也算）');
-      $('inDesc').focus();
-      return;
-    }
     await saveBatch();
     if (next) {
-      await startNew();
+      showView('home');
+      quickCapture();
     } else {
       showView('home');
       toast('已保存');
@@ -963,14 +991,21 @@
     };
   }
 
+  function confirmNoDesc() {
+    var n = state.batch.hazards.filter(function (h) { return !(h.desc || '').trim(); }).length;
+    if (!n) return true;
+    return confirm(n + ' 条只有照片、没写描述，不会进通知单。继续导出？');
+  }
+
   async function exportNotice() {
     var hazards = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
-    if (!hazards.length) { toast('还没有隐患，先拍一条'); return; }
+    if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
       openSetup('edit');
       return;
     }
+    if (!confirmNoDesc()) return;
     setLoading(true, '正在生成通知单…');
     try {
       var payload = await buildNoticePayload();
@@ -989,12 +1024,13 @@
 
   async function exportPdf() {
     var hazards = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
-    if (!hazards.length) { toast('还没有隐患，先拍一条'); return; }
+    if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
       openSetup('edit');
       return;
     }
+    if (!confirmNoDesc()) return;
     setLoading(true, '正在生成 PDF…');
     try {
       var payload = await buildNoticePayload();
@@ -1012,9 +1048,10 @@
 
   function openExport() {
     var n = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); }).length;
+    var total = state.batch.hazards.length;
     $('exportSub').textContent = n
       ? (n + ' 条隐患 · 生成后可直接发微信/QQ/邮件')
-      : '还没有隐患';
+      : (total ? '还没写描述，通知单会是空的' : '还没有隐患');
     showView('export');
   }
 
@@ -1250,7 +1287,7 @@
   function bind() {
     $('btnMenu').addEventListener('click', openMenu);
     $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
-    $('btnNew').addEventListener('click', startNew);
+    $('btnNew').addEventListener('click', quickCapture);
     $('btnBack').addEventListener('click', function () {
       readForm();
       saveBatch().then(function () {
@@ -1300,7 +1337,21 @@
     cam.type = 'file'; cam.accept = 'image/*'; cam.capture = 'environment'; cam.multiple = true;
     cam.id = 'fileCamera'; cam.className = 'hidden';
     document.body.appendChild(cam);
-    cam.addEventListener('change', function () { addPhotos(cam.files); cam.value = ''; });
+    cam.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(cam.files || []);
+      cam.value = '';
+      if (!files.length) { pendingQuick = false; return; }
+      if (pendingQuick) {
+        pendingQuick = false;
+        clearTimeout(quickTimer);
+        createHazardWithPhotos(files).catch(function (e) {
+          console.error(e);
+          toast('照片保存失败：' + (e.message || e));
+        });
+      } else {
+        addPhotos(files);
+      }
+    });
 
     var pick = document.createElement('input');
     pick.type = 'file'; pick.accept = 'image/*'; pick.multiple = true;
