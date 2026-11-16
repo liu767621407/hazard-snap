@@ -376,7 +376,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.10.2';
+  var WEB_VERSION = '1.10.3';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1184,7 +1184,7 @@
       '<div class="sh-tile" id="mSettings">' + svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#1f4e79') + '<span>本次检查信息</span></div>' +
       '<div class="sh-tile" id="mNewBatch">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 18, '#1f4e79') + '<span>新建检查</span></div>' +
       '</div>' +
-      '<div class="sh-sec"><span>历史检查</span><span><a class="sec-link" id="mCheckManage">管理</a> · 共 ' + batches.length + ' 次</span></div>' +
+      '<div class="sh-sec"><span>历史检查</span><span>共 ' + batches.length + ' 次</span></div>' +
       (hist || '<div class="sh-hist"><span class="d">暂无检查</span></div>') +
       '<div class="sh-sec"><span>其它</span><span></span></div>' +
       '<div class="sh-sys" id="mStorage">' +
@@ -1212,13 +1212,29 @@
       };
     }
     $('mClose').onclick = closeSheet;
-    $('mCheckManage').onclick = openCheckManage;
     Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
-      if (b.classList.contains('on')) {
-        b.onclick = closeSheet;
-        return;
-      }
-      b.onclick = function () { closeSheet(); switchBatch(b.dataset.batch); };
+      var isCur = b.classList.contains('on');
+      var timer = null, longPressed = false;
+      var start = function () {
+        longPressed = false;
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          longPressed = true;
+          openCheckManage(b.dataset.batch);
+        }, 480);
+      };
+      var cancel = function () { clearTimeout(timer); };
+      b.addEventListener('touchstart', start, { passive: true });
+      b.addEventListener('touchend', cancel);
+      b.addEventListener('touchmove', cancel, { passive: true });
+      b.addEventListener('mousedown', start);
+      b.addEventListener('mouseup', cancel);
+      b.addEventListener('mouseleave', cancel);
+      b.onclick = function () {
+        if (longPressed) { longPressed = false; return; }
+        closeSheet();
+        if (!isCur) switchBatch(b.dataset.batch);
+      };
     });
     refreshUpdateHint();
   }
@@ -1231,15 +1247,17 @@
     del.classList.toggle('disabled', n === 0);
   }
 
-  async function openCheckManage() {
+  async function openCheckManage(preselect) {
     var batches = await dbAll('batches');
     batches.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
     checkSel = {};
+    if (preselect && preselect !== state.batch.id) checkSel[preselect] = true;
     var rows = batches.map(function (b) {
       var w = batchWhen(b);
       var on = b.id === state.batch.id;
-      return '<div class="cm-row' + (on ? ' dis' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
-        '<span class="cm-check"></span>' +
+      var sel = !on && !!checkSel[b.id];
+      return '<div class="cm-row' + (on ? ' dis' : '') + (sel ? ' on' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
+        '<span class="cm-check">' + (sel ? '✓' : '') + '</span>' +
         '<span class="d">' + C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '') + '</span>' +
         (on ? '<span class="badge" style="font-size:10.5px;color:var(--blue);background:#eaf2fa;border-radius:6px;padding:2px 6px">当前</span>' : '') +
         '<span class="n">' + b.hazards.length + ' 条</span></div>';
@@ -1252,6 +1270,7 @@
       '<div class="cm-actions"><div class="btn ghost" id="mAll">全选</div><div class="btn primary disabled" id="mDel">删除（0）</div></div>'
     );
     $('mManageDone').onclick = openMenu;
+    updateManageBar();
     Array.prototype.forEach.call($('sheet').querySelectorAll('.cm-row'), function (r) {
       if (r.classList.contains('dis')) return;
       r.onclick = function () {
