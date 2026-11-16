@@ -377,7 +377,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.10.6';
+  var WEB_VERSION = '1.10.7';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1191,58 +1191,58 @@
       '<div class="sh-grab"></div>' +
       '<div class="sh-hd"><div><div class="tt">检查详情</div><div class="mt">' +
       (histMode ? '点选要删除的检查；当前检查不能删' : C.escapeHtml(meta)) + '</div></div>' +
-      '<button class="sh-x" id="mClose"' + (histMode ? ' style="width:auto;padding:0 10px;font-size:13px">取消' : '>' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b')) + '</button></div>' +
-      (histMode ? '' :
-        '<div class="sh-primary" id="mExport">' +
-        '<span class="ib">' + svgIcon('<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>', 20, '#ffffff') + '</span>' +
-        '<span class="pt"><span class="t">导出 / 分享</span><span class="s">Word · PDF · 数据包（zip）</span></span>' +
-        svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') +
-        '</div>' +
-        '<div class="sh-grid">' +
-        '<div class="sh-tile" id="mSettings">' + svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#1f4e79') + '<span>本次检查信息</span></div>' +
-        '<div class="sh-tile" id="mNewBatch">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 18, '#1f4e79') + '<span>新建检查</span></div>' +
-        '</div>') +
+      '<button class="sh-x" id="mClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
+      '<div class="sh-primary" id="mExport">' +
+      '<span class="ib">' + svgIcon('<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>', 20, '#ffffff') + '</span>' +
+      '<span class="pt"><span class="t">导出 / 分享</span><span class="s">Word · PDF · 数据包（zip）</span></span>' +
+      svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') +
+      '</div>' +
+      '<div class="sh-grid">' +
+      '<div class="sh-tile" id="mSettings">' + svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#1f4e79') + '<span>本次检查信息</span></div>' +
+      '<div class="sh-tile" id="mNewBatch">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 18, '#1f4e79') + '<span>新建检查</span></div>' +
+      '</div>' +
       '<div class="sh-sec"><span>历史检查</span><span>' +
       (histMode ? '已选 ' + selected + ' 条' : '共 ' + batches.length + ' 次') + '</span></div>' +
       (hist || '<div class="sh-hist"><span class="d">暂无检查</span></div>') +
       (histMode
         ? '<div class="cm-actions"><div class="btn ghost" id="mAll">全选</div>' +
-          '<div class="btn primary' + (selected ? '' : ' disabled') + '" id="mDel">删除（' + selected + '）</div></div>'
+          '<div class="btn primary' + (selected ? '' : ' disabled') + '" id="mDel">删除（' + selected + '）</div>' +
+          '<div class="btn ghost" id="mCancelSel">取消</div></div>'
         : '') +
-      (histMode ? '' :
-        '<div class="sh-sec"><span>其它</span><span></span></div>' +
-        '<div class="sh-sys" id="mStorage">' +
-        svgIcon('<rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="13" width="16" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/>', 18, '#5a6b7b') +
-        '<span class="t">存储占用 / 清理</span><span class="v">' + C.formatBytes(bytes) + '</span>' +
-        '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>' +
-        (hasUpdateBridge()
-          ? '<div class="sh-sys" id="mUpdate">' +
-            svgIcon('<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 5v6h-6"/>', 18, '#5a6b7b') +
-            '<span class="t">检查更新</span><span class="v" id="mUpdateVal">' + C.escapeHtml(appVer || '检查') + '</span>' +
-            '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>'
-          : '') +
-        '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>')
+      '<div class="sh-sec"><span>其它</span><span></span></div>' +
+      '<div class="sh-sys" id="mStorage">' +
+      svgIcon('<rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="13" width="16" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/>', 18, '#5a6b7b') +
+      '<span class="t">存储占用 / 清理</span><span class="v">' + C.formatBytes(bytes) + '</span>' +
+      '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>' +
+      (hasUpdateBridge()
+        ? '<div class="sh-sys" id="mUpdate">' +
+          svgIcon('<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 5v6h-6"/>', 18, '#5a6b7b') +
+          '<span class="t">检查更新</span><span class="v" id="mUpdateVal">' + C.escapeHtml(appVer || '检查') + '</span>' +
+          '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>'
+        : '') +
+      '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
     );
 
     $('mClose').onclick = function () {
-      if (histMode) { checkSel = {}; openMenu(false); return; }
+      checkSel = {};
+      histMode = false;
       closeSheet();
     };
+    $('mExport').onclick = function () { closeSheet(); backTo = 'menu'; openExport(); };
+    $('mSettings').onclick = function () { closeSheet(); backTo = 'menu'; openSetup('edit'); };
+    $('mNewBatch').onclick = function () { closeSheet(); backTo = 'menu'; newCheck(); };
+    $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
+    var upd = $('mUpdate');
+    if (upd) {
+      upd.onclick = function () {
+        closeSheet();
+        try { window.SnapAndroid.checkUpdate(); } catch (e) { toast('检查更新失败'); }
+      };
+    }
     if (histMode) {
       $('mAll').onclick = function () { toggleAllChecks(); };
       $('mDel').onclick = function () { deleteChecked(); };
-    } else {
-      $('mExport').onclick = function () { closeSheet(); backTo = 'menu'; openExport(); };
-      $('mSettings').onclick = function () { closeSheet(); backTo = 'menu'; openSetup('edit'); };
-      $('mNewBatch').onclick = function () { closeSheet(); backTo = 'menu'; newCheck(); };
-      $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
-      var upd = $('mUpdate');
-      if (upd) {
-        upd.onclick = function () {
-          closeSheet();
-          try { window.SnapAndroid.checkUpdate(); } catch (e) { toast('检查更新失败'); }
-        };
-      }
+      $('mCancelSel').onclick = function () { checkSel = {}; openMenu(false); };
     }
     Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
       var isCur = b.classList.contains('on') || b.classList.contains('dis');
