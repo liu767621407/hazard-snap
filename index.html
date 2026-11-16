@@ -159,6 +159,8 @@
   .chip.ck{background:#fef3c7;color:#92400e}
   .ck-tabs button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:13.5px;color:var(--muted)}
   .ck-tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .ck-tabs .ck-allsel{flex:0 0 auto;padding:8px 10px;}
+  .ck-selbox.lock{background:#eef1f5;border-color:#dde3ea;color:#b8c2cd}
   .ck-list{padding:10px 12px 30px}
   .ck-group{background:#fff;border-radius:12px;margin-bottom:10px;overflow:hidden}
   .ck-head{display:flex;align-items:center;gap:8px;padding:13px 14px;font-size:15px}
@@ -439,6 +441,7 @@
     <button data-f="all" class="on">全部</button>
     <button data-f="todo">未检</button>
     <button data-f="ng">不符合</button>
+    <button id="ckAllSel" class="ck-allsel">全选</button>
   </div>
   <div id="ckList" class="ck-list"></div>
   <div class="ck-bulk hidden" id="ckBulk">
@@ -466,7 +469,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.2.0';
+  var WEB_VERSION = '2.3.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1841,10 +1844,18 @@
     }).length;
   }
 
+  // 已拍照或已写问题描述的条目，不能通过多选/全选标为合格
+  function ckLocked(it) {
+    var a = ckAnswers();
+    var note = (a[it.id] && a[it.id].note) || '';
+    return ckHazardCount(it.no) > 0 || note.trim() !== '';
+  }
+
   function renderChecklist() {
     var a = ckAnswers();
     var st = ckStats();
     var q = ($('ckSearch').value || '').trim();
+    CK_FLAT.forEach(function (it) { if (ckSel[it.id] && ckLocked(it)) delete ckSel[it.id]; });
     $('ckSub').textContent = (state.batch.meta.short_unit || state.batch.meta.unit || '') + ' · ' + state.batch.meta.check_date;
     $('ckNums').innerHTML = '已检 <b>' + st.done + '</b>/' + st.total +
       ' · 合格 <b>' + st.ok + '</b> · 不符合 <b>' + st.ng + '</b> · 未检 <b>' + (st.total - st.done) + '</b>';
@@ -1872,7 +1883,8 @@
         if (r === 'ng') ng++;
       });
       var open = ckMeta.filter !== 'all' || !!q || ckMeta.open[gi];
-      var allSel = items.length && items.every(function (it) { return ckSel[it.id]; });
+      var unlocked = items.filter(function (it) { return !ckLocked(it); });
+      var allSel = unlocked.length && unlocked.every(function (it) { return ckSel[it.id]; });
       html += '<div class="ck-group' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
         '<div class="ck-head">' +
         '<span class="ck-selbox' + (allSel ? ' on' : '') + '" data-gsel="' + gi + '">' + (allSel ? '✓' : '') + '</span>' +
@@ -1883,9 +1895,12 @@
           var r = (a[it.id] && a[it.id].r) || '';
           var note = (a[it.id] && a[it.id].note) || '';
           var nimg = ckHazardCount(it.no);
-          var sel = !!ckSel[it.id];
+          var locked = ckLocked(it);
+          var sel = !!ckSel[it.id] && !locked;
           return '<div class="ck-item" data-id="' + it.id + '">' +
-            '<div class="ck-q"><span class="ck-selbox' + (sel ? ' on' : '') + '" data-isel="' + it.id + '">' + (sel ? '✓' : '') + '</span>' +
+            '<div class="ck-q"><span class="ck-selbox' + (sel ? ' on' : '') + (locked ? ' lock' : '') + '"' +
+            (locked ? ' title="已有照片或问题描述，不能批量标合格"' : ' data-isel="' + it.id + '"') + '>' +
+            (sel ? '✓' : '') + '</span>' +
             '<b>' + it.no + '</b>' + C.escapeHtml(it.text) + '</div>' +
             '<div class="ck-act"><button class="ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok">合格</button>' +
             '<button class="ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng">不符合</button>' +
@@ -1898,6 +1913,17 @@
     var selN = Object.keys(ckSel).length;
     $('ckBulk').classList.toggle('hidden', !selN);
     $('ckBulkN').textContent = selN;
+    var allUnlocked = CK_FLAT.filter(function (it) { return !ckLocked(it); });
+    var allSelAll = allUnlocked.length && allUnlocked.every(function (it) { return ckSel[it.id]; });
+    $('ckAllSel').textContent = allSelAll ? '取消全选' : '全选';
+  }
+
+  function toggleAllCk() {
+    var unlocked = CK_FLAT.filter(function (it) { return !ckLocked(it); });
+    var all = unlocked.length && unlocked.every(function (it) { return ckSel[it.id]; });
+    ckSel = {};
+    if (!all) unlocked.forEach(function (it) { ckSel[it.id] = true; });
+    renderChecklist();
   }
 
   function toggleCkSel(id) {
@@ -1909,8 +1935,9 @@
   function toggleGroupSel(gi) {
     var g = CK_GROUPS[gi];
     if (!g) return;
-    var all = g.items.every(function (it) { return ckSel[it.id]; });
-    g.items.forEach(function (it) {
+    var unlocked = g.items.filter(function (it) { return !ckLocked(it); });
+    var all = unlocked.length && unlocked.every(function (it) { return ckSel[it.id]; });
+    unlocked.forEach(function (it) {
       if (all) delete ckSel[it.id];
       else ckSel[it.id] = true;
     });
@@ -1918,8 +1945,18 @@
   }
 
   function bulkMarkOk() {
-    var ids = Object.keys(ckSel);
-    if (!ids.length) return;
+    var ids = Object.keys(ckSel).filter(function (id) {
+      var it = null;
+      CK_FLAT.forEach(function (x) { if (x.id === id) it = x; });
+      return it && !ckLocked(it);
+    });
+    var skipped = Object.keys(ckSel).length - ids.length;
+    if (!ids.length) {
+      ckSel = {};
+      renderChecklist();
+      toast('选中的条目都有照片或问题描述，不能标为合格');
+      return;
+    }
     var a = ckAnswers();
     ids.forEach(function (id) {
       a[id] = a[id] || { r: '', note: '' };
@@ -1928,7 +1965,7 @@
     ckSel = {};
     ckSave();
     renderChecklist();
-    toast('已把 ' + ids.length + ' 项标为合格');
+    toast('已把 ' + ids.length + ' 项标为合格' + (skipped ? '，' + skipped + ' 项已有照片/描述已跳过' : ''));
   }
 
   // ---------------- 事件绑定 ----------------
@@ -1946,10 +1983,11 @@
     $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
       var b = e.target.closest('button');
-      if (!b) return;
+      if (!b || b.id === 'ckAllSel') return;
       ckMeta.filter = b.dataset.f;
       renderChecklist();
     });
+    $('ckAllSel').addEventListener('click', toggleAllCk);
     $('ckList').addEventListener('click', function (e) {
       var sb = e.target.closest('.ck-selbox');
       if (sb) {
@@ -1992,6 +2030,7 @@
       if (!a[id]) a[id] = { r: 'ng', note: '' };
       a[id].note = e.target.value;
       ckSave();
+      renderChecklist();
     });
     $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
 
