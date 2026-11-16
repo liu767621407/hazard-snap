@@ -147,6 +147,7 @@
   .cm-row .d{font-size:14.5px;color:var(--text)}
   .cm-row .d span{font-size:12.5px;color:#8a97a6;margin-left:6px}
   .cm-row .n{margin-left:auto;font-size:12.5px;color:var(--muted)}
+  .cm-row .badge{font-size:10.5px;color:var(--blue);background:#eaf2fa;border-radius:6px;padding:2px 6px}
   .cm-actions{display:flex;gap:10px;margin:16px 20px 4px}
   .cm-actions .btn{flex:1;justify-content:center}
   .btn.disabled{opacity:.45;pointer-events:none}
@@ -376,7 +377,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.10.4';
+  var WEB_VERSION = '1.10.5';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -384,6 +385,7 @@
   var pendingQuick = false;
   var quickTimer = null;
   var checkSel = {};
+  var histMode = false;
   var backTo = null;
 
   function hasUpdateBridge() {
@@ -1152,7 +1154,8 @@
     return { date: date, time: time };
   }
 
-  async function openMenu() {
+  async function openMenu(manage) {
+    histMode = !!manage;
     var batches = await dbAll('batches');
     batches.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
     var cur = state.batch;
@@ -1174,6 +1177,37 @@
     try {
       if (window.SnapAndroid && window.SnapAndroid.appVersion) appVer = window.SnapAndroid.appVersion();
     } catch (e) {}
+
+    if (histMode) {
+      var selected = Object.keys(checkSel).length;
+      var mrows = batches.map(function (b) {
+        var mw = batchWhen(b);
+        var mon = b.id === cur.id;
+        var msel = !mon && !!checkSel[b.id];
+        return '<div class="cm-row' + (mon ? ' dis' : '') + (msel ? ' on' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
+          '<span class="cm-check">' + (msel ? '✓' : '') + '</span>' +
+          '<span class="d">' + C.escapeHtml(mw.date) + (mw.time ? '<span>' + C.escapeHtml(mw.time) + '</span>' : '') + '</span>' +
+          (mon ? '<span class="badge">当前</span>' : '') +
+          '<span class="n">' + b.hazards.length + ' 条</span></div>';
+      }).join('');
+      openSheet(
+        '<div class="sh-grab"></div>' +
+        '<div class="sh-hd"><div><div class="tt">管理检查</div><div class="mt">勾选要删除的检查；当前检查不能删</div></div>' +
+        '<button class="sh-x" id="mCancel" style="width:auto;padding:0 10px;font-size:13px">取消</button></div>' +
+        '<div class="sh-sec"><span>历史检查</span><span>共 ' + batches.length + ' 次</span></div>' +
+        (mrows || '<div class="cm-row"><span class="d">暂无检查</span></div>') +
+        '<div class="cm-actions"><div class="btn ghost" id="mAll">全选</div>' +
+        '<div class="btn primary' + (selected ? '' : ' disabled') + '" id="mDel">删除（' + selected + '）</div></div>'
+      );
+      $('mCancel').onclick = function () { checkSel = {}; openMenu(false); };
+      Array.prototype.forEach.call($('sheet').querySelectorAll('.cm-row'), function (r) {
+        if (!r.dataset.id || r.classList.contains('dis')) return;
+        r.onclick = function () { toggleCheck(r.dataset.id); };
+      });
+      $('mAll').onclick = function () { toggleAllChecks(); };
+      $('mDel').onclick = function () { deleteChecked(); };
+      return;
+    }
 
     openSheet(
       '<div class="sh-grab"></div>' +
@@ -1224,7 +1258,9 @@
         clearTimeout(timer);
         timer = setTimeout(function () {
           longPressed = true;
-          openCheckManage(b.dataset.batch);
+          checkSel = {};
+          if (!isCur) checkSel[b.dataset.batch] = true;
+          openMenu(true);
         }, 480);
       };
       var cancel = function () { clearTimeout(timer); };
@@ -1243,90 +1279,38 @@
     refreshUpdateHint();
   }
 
-  function updateManageBar() {
-    var n = Object.keys(checkSel).length;
-    var del = $('mDel');
-    if (!del) return;
-    del.textContent = '删除（' + n + '）';
-    del.classList.toggle('disabled', n === 0);
+  function toggleCheck(id) {
+    if (checkSel[id]) delete checkSel[id];
+    else checkSel[id] = true;
+    openMenu(true);
   }
 
-  async function openCheckManage(preselect) {
-    var batches = await dbAll('batches');
-    batches.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
+  async function toggleAllChecks() {
+    var bs = await dbAll('batches');
+    var list = bs.filter(function (b) { return b.id !== state.batch.id; });
+    var every = list.length && list.every(function (b) { return checkSel[b.id]; });
     checkSel = {};
-    if (preselect && preselect !== state.batch.id) checkSel[preselect] = true;
-    var rows = batches.map(function (b) {
-      var w = batchWhen(b);
-      var on = b.id === state.batch.id;
-      var sel = !on && !!checkSel[b.id];
-      return '<div class="cm-row' + (on ? ' dis' : '') + (sel ? ' on' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
-        '<span class="cm-check">' + (sel ? '✓' : '') + '</span>' +
-        '<span class="d">' + C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '') + '</span>' +
-        (on ? '<span class="badge" style="font-size:10.5px;color:var(--blue);background:#eaf2fa;border-radius:6px;padding:2px 6px">当前</span>' : '') +
-        '<span class="n">' + b.hazards.length + ' 条</span></div>';
-    }).join('');
-    openSheet(
-      '<div class="sh-grab"></div>' +
-      '<div class="sh-hd"><div><div class="tt">管理检查</div><div class="mt">勾选要删除的检查；当前检查不能删</div></div>' +
-      '<button class="sh-x" id="mManageDone" style="width:auto;padding:0 10px;font-size:13px">完成</button></div>' +
-      rows +
-      '<div class="cm-actions"><div class="btn ghost" id="mAll">全选</div><div class="btn primary disabled" id="mDel">删除（0）</div></div>'
-    );
-    $('mManageDone').onclick = openMenu;
-    updateManageBar();
-    Array.prototype.forEach.call($('sheet').querySelectorAll('.cm-row'), function (r) {
-      if (r.classList.contains('dis')) return;
-      r.onclick = function () {
-        var id = r.dataset.id;
-        var mark = r.querySelector('.cm-check');
-        if (checkSel[id]) {
-          delete checkSel[id];
-          r.classList.remove('on');
-          mark.textContent = '';
-        } else {
-          checkSel[id] = true;
-          r.classList.add('on');
-          mark.textContent = '✓';
-        }
-        updateManageBar();
-      };
-    });
-    $('mAll').onclick = function () {
-      var list = $('sheet').querySelectorAll('.cm-row:not(.dis)');
-      var all = list.length && Array.prototype.every.call(list, function (r) { return checkSel[r.dataset.id]; });
-      checkSel = {};
-      Array.prototype.forEach.call(list, function (r) {
-        var mark = r.querySelector('.cm-check');
-        if (!all) {
-          checkSel[r.dataset.id] = true;
-          r.classList.add('on');
-          mark.textContent = '✓';
-        } else {
-          r.classList.remove('on');
-          mark.textContent = '';
-        }
-      });
-      updateManageBar();
-    };
-    $('mDel').onclick = async function () {
-      var ids = Object.keys(checkSel);
-      if (!ids.length) return;
-      var cnt = 0;
-      for (var i = 0; i < batches.length; i++) {
-        if (checkSel[batches[i].id]) cnt += batches[i].hazards.length;
-      }
-      if (!confirm('删除 ' + ids.length + ' 个检查（共 ' + cnt + ' 条隐患，照片一起删除，不可恢复）？')) return;
-      for (var k = 0; k < ids.length; k++) {
-        if (ids[k] === state.batch.id) continue;
-        var ps = await dbIndex('photos', 'byBatch', ids[k]);
-        for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
-        await dbDel('batches', ids[k]);
-      }
-      closeSheet();
-      toast('已删除 ' + ids.length + ' 个检查');
-      showView('home');
-    };
+    if (!every) list.forEach(function (b) { checkSel[b.id] = true; });
+    openMenu(true);
+  }
+
+  async function deleteChecked() {
+    var ids = Object.keys(checkSel);
+    if (!ids.length) return;
+    var bs = await dbAll('batches');
+    var cnt = 0;
+    bs.forEach(function (b) { if (checkSel[b.id]) cnt += b.hazards.length; });
+    if (!confirm('删除 ' + ids.length + ' 个检查（共 ' + cnt + ' 条隐患，照片一起删除，不可恢复）？')) return;
+    for (var k = 0; k < ids.length; k++) {
+      if (ids[k] === state.batch.id) continue;
+      var ps = await dbIndex('photos', 'byBatch', ids[k]);
+      for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
+      await dbDel('batches', ids[k]);
+    }
+    checkSel = {};
+    toast('已删除 ' + ids.length + ' 个检查');
+    showView('home');
+    openMenu(false);
   }
 
   async function refreshUpdateHint() {
@@ -1555,7 +1539,7 @@
 
   // ---------------- 事件绑定 ----------------
   function bind() {
-    $('btnMenu').addEventListener('click', openMenu);
+    $('btnMenu').addEventListener('click', function () { openMenu(false); });
     $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
 
     // 面板下拉关闭（顶部区域，列表未滚动时）
@@ -1675,7 +1659,11 @@
   // 安卓返回键：先回上一级菜单，不直接退出
   window.SnapBack = function () {
     try {
-      if (!$('mask').classList.contains('hidden')) { closeSheet(); return true; }
+      if (!$('mask').classList.contains('hidden')) {
+        if (histMode) { checkSel = {}; openMenu(false); return true; }
+        closeSheet();
+        return true;
+      }
       var view = document.body.dataset.view;
       if (view === 'edit') { $('btnBack').click(); return true; }
       if (view === 'export' || view === 'settings') { goUp(); return true; }
