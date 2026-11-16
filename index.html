@@ -429,6 +429,7 @@
   <header>
     <button class="iconbtn" id="btnCkBack" aria-label="返回">←</button>
     <div class="titles"><h1>检查清单</h1><div class="sub" id="ckSub"></div></div>
+    <button id="btnCkExport" style="border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13.5px;padding:8px 12px;border-radius:10px">导出</button>
   </header>
   <div class="ck-sum">
     <div class="ck-bar"><i id="ckBar"></i></div>
@@ -1006,6 +1007,56 @@
     await saveBatch();
     renderChecklist();
     toast('已生成隐患记录（189·' + item.no + '）');
+  }
+
+  async function exportChecklistRecord() {
+    var a = ckAnswers();
+    var st = ckStats();
+    var m = state.batch.meta;
+    var title = (m.name || '').trim() || ('检查清单 ' + (m.check_date || ''));
+    var rows = '';
+    CK_GROUPS.forEach(function (g) {
+      g.items.forEach(function (it) {
+        var ans = a[it.id] || {};
+        var r = ans.r || '';
+        var txt = r === 'ok' ? '合格' : (r === 'ng' ? '不符合' : '未检');
+        rows += '<tr>' +
+          '<td class="c">' + it.no + '</td>' +
+          '<td>' + C.escapeHtml(g.name) + '</td>' +
+          '<td>' + C.escapeHtml(it.text) + '</td>' +
+          '<td class="c' + (r === 'ng' ? ' ng' : '') + '">' + txt + '</td>' +
+          '<td>' + C.escapeHtml(ans.note || '') + '</td>' +
+          '</tr>';
+      });
+    });
+    var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8">' +
+      '<style>' +
+      '@page{size:A4;margin:1.4cm}' +
+      'body{font-family:"宋体",SimSun;font-size:9pt;color:#000}' +
+      'h1{font-family:"黑体",SimHei;font-size:15pt;text-align:center;margin:0 0 8pt}' +
+      '.meta{font-size:9pt;margin:3pt 0}' +
+      'table{border-collapse:collapse;width:100%}' +
+      'th,td{border:1px solid #000;padding:2.5pt 3pt;vertical-align:top}' +
+      'th{background:#E8EEF6;font-family:"黑体",SimHei;text-align:center}' +
+      '.c{text-align:center}' +
+      '.ng{color:#C00000;font-weight:bold}' +
+      '</style></head><body>' +
+      '<h1>189 条清单检查记录</h1>' +
+      '<div class="meta">检查名称：' + C.escapeHtml(title) + '　　受查单位：' + C.escapeHtml(m.unit || '') +
+      (m.short_unit ? '（' + C.escapeHtml(m.short_unit) + '）' : '') + '</div>' +
+      '<div class="meta">检查日期：' + C.escapeHtml(m.check_date || '') + '　　检查人：' + C.escapeHtml(m.inspectors || '') +
+      '　　检查地点：' + C.escapeHtml(m.location || '') + '</div>' +
+      '<div class="meta">检查项：' + st.total + '　已检：' + st.done + '　合格：' + st.ok + '　不符合：' + st.ng +
+      '　未检：' + (st.total - st.done) + '</div>' +
+      '<table><thead><tr><th style="width:9%">序号</th><th style="width:15%">区域</th><th style="width:40%">检查内容</th>' +
+      '<th style="width:10%">结果</th><th style="width:26%">问题描述</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div class="meta">导出时间：' + C.isoNow().replace('T', ' ') + '</div>' +
+      '</body></html>';
+    var safe = String(m.short_unit || m.unit || '检查').replace(/[\\/:*?"<>|]/g, '_');
+    var name = '189条清单_' + safe + '_' + (m.check_date || '') + '.doc';
+    var bytes = new TextEncoder().encode('\ufeff' + html);
+    await shareBytes(bytes, name, 'application/msword');
+    toast('已生成 ' + name);
   }
 
   function showView(name) {
@@ -1900,6 +1951,12 @@
     $('btnMenu').addEventListener('click', function () { openMenu('detail'); });
     $('btnAdd').addEventListener('click', function () { openMenu('add'); });
     $('btnCkBack').addEventListener('click', goUp);
+    $('btnCkExport').addEventListener('click', function () {
+      exportChecklistRecord().catch(function (e) {
+        console.error(e);
+        toast('导出失败：' + (e.message || e));
+      });
+    });
     $('ckEntry').addEventListener('click', openChecklist);
     $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
