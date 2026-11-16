@@ -154,6 +154,9 @@
   .ck-nums{display:flex;gap:14px;font-size:12.5px;color:var(--muted);margin-top:8px}
   .ck-nums b{color:var(--text)}
   .ck-tabs{display:flex;gap:8px;padding:10px 16px;background:#fff}
+  .ck-search{padding:0 16px 8px;background:#fff}
+  .ck-search input{width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:#f7f9fc;color:var(--text)}
+  .chip.ck{background:#fef3c7;color:#92400e}
   .ck-tabs button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:13.5px;color:var(--muted)}
   .ck-tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
   .ck-list{padding:10px 12px 30px}
@@ -173,6 +176,8 @@
   .ck-act button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:13.5px;color:var(--muted)}
   .ck-act .ok.on{background:#e7f6ed;border-color:#1e8e5a;color:#1e8e5a}
   .ck-act .ng.on{background:#fdecec;border-color:#c0392b;color:#c0392b}
+  .ck-act .ph{flex:0 0 54px;font-size:15px}
+  .ck-act .ph i{font-style:normal;font-size:11px;color:var(--blue);margin-left:2px}
   .ck-note{width:100%;margin-top:8px;min-height:52px;border:1px solid var(--line);border-radius:9px;padding:8px;font-size:13.5px;resize:vertical}
   .ck-empty{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
   .sec-link{color:var(--blue);font-weight:500;margin-right:2px}
@@ -259,7 +264,7 @@
     <span id="statSize">0 MB</span>
     <button class="linkbtn" id="btnManage">管理</button>
   </div>
-  <div id="ckEntryWrap" class="hidden">
+  <div id="ckEntryWrap">
     <button class="ckentry" id="ckEntry">
       <span class="ckentry-t">📋 检查清单</span>
       <span class="ckentry-s" id="ckEntrySub"></span>
@@ -358,7 +363,7 @@
     <div class="field"><label>检查地点</label><input id="cfgLocation" placeholder="甲子背稀土矿"></div>
     <div class="row2 field">
       <div style="flex:1"><label>检查类型</label>
-        <select id="cfgType"><option>一般检查</option><option>专项检查</option><option>清单化检查（189条）</option></select>
+        <select id="cfgType"><option>一般检查</option><option>专项检查</option></select>
       </div>
     </div>
     <div class="field"><label>专项名称（专项检查才填）</label><input id="cfgSpecial" placeholder="如：消防安全专项检查"></div>
@@ -417,6 +422,7 @@
     <div class="ck-bar"><i id="ckBar"></i></div>
     <div class="ck-nums" id="ckNums"></div>
   </div>
+  <div class="ck-search"><input id="ckSearch" type="search" placeholder="搜索检查项 / 区域 / 描述" autocomplete="off"></div>
   <div class="ck-tabs" id="ckTabs">
     <button data-f="all" class="on">全部</button>
     <button data-f="todo">未检</button>
@@ -449,6 +455,7 @@
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
   };
   var pendingQuick = false;
+  var pendingCk = null;
   var quickTimer = null;
   var checkSel = {};
   var histMode = false;
@@ -734,12 +741,8 @@
     $('selBar').classList.toggle('hidden', !state.selecting);
     $('btnManage').classList.toggle('hidden', state.selecting);
     document.querySelector('.fabbar').classList.toggle('hidden', state.selecting);
-    var isCk = (batch.meta.check_type || '').indexOf('清单化') >= 0;
-    $('ckEntryWrap').classList.toggle('hidden', !isCk);
-    if (isCk) {
-      var cst = ckStats();
-      $('ckEntrySub').textContent = '已检 ' + cst.done + '/' + cst.total + ' · 不符合 ' + cst.ng;
-    }
+    var cst = ckStats();
+    $('ckEntrySub').textContent = '已检 ' + cst.done + '/' + cst.total + ' · 不符合 ' + cst.ng;
     batch.hazards.forEach(function (h, idx) {
       var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
       var before = photosOf(h.id, 'before').length;
@@ -758,6 +761,7 @@
           '<div class="meta">' +
             '<span class="chip">' + (idx + 1) + '</span>' +
             '<span class="chip ' + (h.level === '重大' ? 'warn' : '') + '">' + C.escapeHtml(h.level || '一般') + '</span>' +
+            (h.tag && h.tag.type === 'checklist' ? '<span class="chip ck">189·' + h.tag.no + '</span>' : '') +
             (h.measure ? '<span class="chip after">已填措施</span>' : '') +
             '<span>前 ' + before + ' 张</span>' +
             (after ? '<span class="chip after">后 ' + after + ' 张</span>' : '') +
@@ -949,6 +953,40 @@
     toast('照片已存，点这一条补描述即可');
   }
 
+  // 清单项拍照 → 生成带“189条”标签的隐患随手拍记录
+  async function createChecklistHazard(itemId, files) {
+    var item = null, gname = '';
+    CK_GROUPS.forEach(function (g) {
+      g.items.forEach(function (it) {
+        if (it.id === itemId) { item = it; gname = g.name; }
+      });
+    });
+    if (!item) return;
+    var batch = state.batch;
+    var hid = nextHazardId(batch);
+    var h = {
+      id: hid, seq: batch.hazards.length + 1,
+      desc: item.text.slice(0, 120),
+      measure: '', location: gname, level: '一般', responsible: '',
+      created: C.isoNow(),
+      tag: { type: 'checklist', no: item.no, group: gname }
+    };
+    batch.hazards.push(h);
+    var a = ckAnswers();
+    a[item.id] = a[item.id] || { r: '', note: '' };
+    if (a[item.id].r !== 'ok') a[item.id].r = 'ng';
+    await saveBatch();
+    state.editing = { hazardId: hid, phase: 'before' };
+    try {
+      await addPhotos(files);
+    } finally {
+      state.editing = null;
+    }
+    await saveBatch();
+    renderChecklist();
+    toast('已生成隐患记录（189·' + item.no + '）');
+  }
+
   function showView(name) {
     document.body.dataset.view = name;
     $('viewEdit').classList.toggle('hidden', name !== 'edit');
@@ -1058,7 +1096,7 @@
       var item = {
         id: h.id, seq: h.seq, desc: h.desc, measure: h.measure || '',
         location: h.location, level: h.level,
-        responsible: h.responsible, created: h.created, photos: []
+        responsible: h.responsible, created: h.created, tag: h.tag || null, photos: []
       };
       var counter = { before: 0, after: 0 };
       for (var j = 0; j < recs.length; j++) {
@@ -1692,13 +1730,21 @@
 
   function openChecklist() {
     ckMeta.filter = 'all';
+    if ($('ckSearch')) $('ckSearch').value = '';
     renderChecklist();
     showView('checklist');
+  }
+
+  function ckHazardCount(no) {
+    return (state.batch.hazards || []).filter(function (h) {
+      return h.tag && h.tag.type === 'checklist' && h.tag.no === no;
+    }).length;
   }
 
   function renderChecklist() {
     var a = ckAnswers();
     var st = ckStats();
+    var q = ($('ckSearch').value || '').trim();
     $('ckSub').textContent = (state.batch.meta.short_unit || state.batch.meta.unit || '') + ' · ' + state.batch.meta.check_date;
     $('ckNums').innerHTML = '已检 <b>' + st.done + '</b>/' + st.total +
       ' · 合格 <b>' + st.ok + '</b> · 不符合 <b>' + st.ng + '</b> · 未检 <b>' + (st.total - st.done) + '</b>';
@@ -1710,8 +1756,12 @@
     CK_GROUPS.forEach(function (g, gi) {
       var items = g.items.filter(function (it) {
         var r = a[it.id] && a[it.id].r;
-        if (ckMeta.filter === 'todo') return !r;
-        if (ckMeta.filter === 'ng') return r === 'ng';
+        if (ckMeta.filter === 'todo' && r) return false;
+        if (ckMeta.filter === 'ng' && r !== 'ng') return false;
+        if (q) {
+          var note = (a[it.id] && a[it.id].note) || '';
+          if ((g.name + ' ' + it.text + ' ' + note).indexOf(q) < 0) return false;
+        }
         return true;
       });
       if (!items.length) return;
@@ -1721,7 +1771,7 @@
         if (r) done++;
         if (r === 'ng') ng++;
       });
-      var open = ckMeta.filter !== 'all' || ckMeta.open[gi];
+      var open = ckMeta.filter !== 'all' || !!q || ckMeta.open[gi];
       html += '<div class="ck-group' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
         '<div class="ck-head"><span class="nm">' + C.escapeHtml(g.name) + '</span>' +
         '<span class="meta">' + done + '/' + g.items.length + (ng ? ' · 不符合 ' + ng : '') + '</span>' +
@@ -1729,10 +1779,12 @@
         '<div class="ck-body">' + items.map(function (it) {
           var r = (a[it.id] && a[it.id].r) || '';
           var note = (a[it.id] && a[it.id].note) || '';
+          var nimg = ckHazardCount(it.no);
           return '<div class="ck-item" data-id="' + it.id + '">' +
             '<div class="ck-q"><b>' + it.no + '</b>' + C.escapeHtml(it.text) + '</div>' +
             '<div class="ck-act"><button class="ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok">合格</button>' +
-            '<button class="ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng">不符合</button></div>' +
+            '<button class="ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng">不符合</button>' +
+            '<button class="ph" data-photo="1">📷' + (nimg ? '<i>' + nimg + '</i>' : '') + '</button></div>' +
             (r === 'ng' ? '<textarea class="ck-note" placeholder="问题描述（选填）">' + C.escapeHtml(note) + '</textarea>' : '') +
             '</div>';
         }).join('') + '</div></div>';
@@ -1746,6 +1798,7 @@
     $('btnAdd').addEventListener('click', function () { openMenu('add'); });
     $('btnCkBack').addEventListener('click', goUp);
     $('ckEntry').addEventListener('click', openChecklist);
+    $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
       var b = e.target.closest('button');
       if (!b) return;
@@ -1758,6 +1811,13 @@
         var gi = +head.parentNode.dataset.g;
         ckMeta.open[gi] = !ckMeta.open[gi];
         head.parentNode.classList.toggle('open', !!ckMeta.open[gi]);
+        return;
+      }
+      var ph = e.target.closest('.ck-act .ph');
+      if (ph) {
+        var phItem = ph.closest('.ck-item');
+        pendingCk = phItem.dataset.id;
+        $('fileCamera').click();
         return;
       }
       var btn = e.target.closest('.ck-act button');
@@ -1875,6 +1935,15 @@
       var files = Array.prototype.slice.call(cam.files || []);
       cam.value = '';
       if (!files.length) { pendingQuick = false; return; }
+      if (pendingCk) {
+        var ckId = pendingCk;
+        pendingCk = null;
+        createChecklistHazard(ckId, files).catch(function (e) {
+          console.error(e);
+          toast('照片保存失败：' + (e.message || e));
+        });
+        return;
+      }
       if (pendingQuick) {
         pendingQuick = false;
         clearTimeout(quickTimer);
