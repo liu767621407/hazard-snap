@@ -386,6 +386,7 @@
   var quickTimer = null;
   var checkSel = {};
   var histMode = false;
+  var backTo = null;
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -924,6 +925,7 @@
       return;
     }
     await saveBatch();
+    backTo = null;
     if (next && !after) {
       showView('home');
       quickCapture();
@@ -1065,6 +1067,7 @@
     if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
+      backTo = 'export';
       openSetup('edit');
       return;
     }
@@ -1090,6 +1093,7 @@
     if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
+      backTo = 'export';
       openSetup('edit');
       return;
     }
@@ -1234,9 +1238,9 @@
       '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
     );
 
-    $('mExport').onclick = function () { closeSheet(); openExport(); };
-    $('mSettings').onclick = function () { closeSheet(); openSetup('edit'); };
-    $('mNewBatch').onclick = function () { closeSheet(); newCheck(); };
+    $('mExport').onclick = function () { closeSheet(); backTo = 'menu'; openExport(); };
+    $('mSettings').onclick = function () { closeSheet(); backTo = 'menu'; openSetup('edit'); };
+    $('mNewBatch').onclick = function () { closeSheet(); backTo = 'menu'; newCheck(); };
     $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
     var upd = $('mUpdate');
     if (upd) {
@@ -1477,6 +1481,7 @@
       return;
     }
     saveBatch();
+    backTo = null;
     showView('home');
     toast('已保存本次检查信息');
   }
@@ -1669,7 +1674,14 @@
 
   // 返回上一级：子页一律回拍照页；拍照页再按返回才退出
   function goUp() {
-    showView('home');
+    var to = backTo || 'home';
+    backTo = null;
+    if (to === 'menu') {
+      showView('home');
+      openMenu();
+      return;
+    }
+    showView(to);
   }
 
   if (!window.SnapCore) {
