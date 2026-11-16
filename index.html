@@ -110,7 +110,7 @@
   .sh-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:0 20px}
   .sh-hd .tt{font-size:18px;font-weight:600;color:var(--text)}
   .sh-hd .mt{font-size:12.5px;color:var(--muted);margin-top:5px}
-  .sheet .sh-x{width:30px;height:30px;padding:0;flex:0 0 auto;border:0;background:#f2f5f8;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#5a6b7b}
+  .sheet .sh-x{width:36px;height:36px;padding:0;flex:0 0 auto;border:0;background:#f2f5f8;border-radius:11px;display:flex;align-items:center;justify-content:center;color:#5a6b7b}
   .sh-primary{display:flex;align-items:center;gap:12px;margin:16px 20px 0;background:var(--blue);color:#fff;border-radius:16px;padding:14px 16px}
   .sh-primary:active{opacity:.92}
   .sh-primary .ib{width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
@@ -136,6 +136,8 @@
   .sh-sys .v{margin-left:auto;font-size:12.5px;color:#8a97a6}
   .sh-sys .chev{color:#b6c1cc;display:flex}
   .sh-foot{text-align:center;font-size:11px;color:#a3afbb;margin-top:16px}
+  body.sheet-open{overflow:hidden}
+  #sheet{transition:transform .2s ease;will-change:transform}
   .toast{position:fixed;left:50%;bottom:calc(110px + env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(20,32,46,.92);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;z-index:60;opacity:0;transition:opacity .2s;pointer-events:none;max-width:86vw;text-align:center}
   .toast.show{opacity:1}
   .loading{position:fixed;inset:0;z-index:70;background:rgba(255,255,255,.72);display:grid;place-items:center;font-size:15px;color:var(--blue)}
@@ -362,7 +364,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.10.0';
+  var WEB_VERSION = '1.10.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1108,10 +1110,18 @@
 
   // ---------------- 批次 / 菜单 ----------------
   function openSheet(html) {
-    $('sheet').innerHTML = html;
+    var s = $('sheet');
+    s.innerHTML = html;
+    s.style.transform = '';
+    s.scrollTop = 0;
     $('mask').classList.remove('hidden');
+    document.body.classList.add('sheet-open');
   }
-  function closeSheet() { $('mask').classList.add('hidden'); }
+  function closeSheet() {
+    $('mask').classList.add('hidden');
+    document.body.classList.remove('sheet-open');
+    $('sheet').style.transform = '';
+  }
 
   function svgIcon(paths, size, stroke) {
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="' +
@@ -1190,6 +1200,10 @@
     }
     $('mClose').onclick = closeSheet;
     Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
+      if (b.classList.contains('on')) {
+        b.onclick = closeSheet;
+        return;
+      }
       b.onclick = function () { closeSheet(); switchBatch(b.dataset.batch); };
     });
     refreshUpdateHint();
@@ -1228,6 +1242,8 @@
     state.batch = b;
     await refreshPhotos();
     showView('home');
+    var w = batchWhen(b);
+    toast('已切换到 ' + [w.date, w.time].filter(Boolean).join(' '));
   }
 
   async function storageInfo() {
@@ -1239,15 +1255,33 @@
         quota = est.quota || 0;
       }
     } catch (e) {}
+    var all = await dbAll('batches');
+    var empties = [];
+    for (var i = 0; i < all.length; i++) {
+      var b0 = all[i];
+      if (b0.id === state.batch.id || b0.hazards.length) continue;
+      var ps0 = await dbIndex('photos', 'byBatch', b0.id);
+      if (!ps0.length) empties.push(b0);
+    }
     openSheet(
       '<h4>存储占用</h4>' +
       '<button disabled>当前检查 ' + C.formatBytes(bytes) + ' · ' + state.photos.length + ' 张</button>' +
       '<button disabled>' + (quota ? '浏览器可用约 ' + C.formatBytes(quota) : '浏览器未报告容量') + '</button>' +
       '<button disabled style="color:#66788a;font-size:13px">导出后即可清理旧检查，数据不会自动上传任何服务器。</button>' +
+      (empties.length ? '<button id="mClearEmpty">🧹 删除空检查（' + empties.length + ' 个）</button>' : '') +
       '<button id="mClearExported">🧹 删除其它已导出检查</button>' +
       '<button id="mClose2">关闭</button>'
     );
     $('mClose2').onclick = closeSheet;
+    var ce = $('mClearEmpty');
+    if (ce) {
+      ce.onclick = async function () {
+        if (!confirm('删除 ' + empties.length + ' 个空检查？')) return;
+        for (var k = 0; k < empties.length; k++) await dbDel('batches', empties[k].id);
+        closeSheet();
+        toast('已删除 ' + empties.length + ' 个空检查');
+      };
+    }
     $('mClearExported').onclick = async function () {
       var batches = await dbAll('batches');
       var targets = batches.filter(function (b) { return b.id !== state.batch.id && b.exported_at; });
@@ -1402,6 +1436,38 @@
   function bind() {
     $('btnMenu').addEventListener('click', openMenu);
     $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
+
+    // 面板下拉关闭（顶部区域，列表未滚动时）
+    (function sheetDrag() {
+      var s = $('sheet');
+      var startY = 0, delta = 0, dragging = false;
+      s.addEventListener('touchstart', function (e) {
+        if (s.scrollTop > 0 || e.touches.length !== 1) return;
+        var top = s.getBoundingClientRect().top;
+        if (e.touches[0].clientY - top > 100) return;
+        startY = e.touches[0].clientY;
+        delta = 0;
+        dragging = true;
+        s.style.transition = 'none';
+      }, { passive: true });
+      s.addEventListener('touchmove', function (e) {
+        if (!dragging) return;
+        delta = Math.max(0, e.touches[0].clientY - startY);
+        s.style.transform = 'translateY(' + delta + 'px)';
+      }, { passive: true });
+      s.addEventListener('touchend', function () {
+        if (!dragging) return;
+        dragging = false;
+        s.style.transition = 'transform .22s ease';
+        if (delta > 90) {
+          s.style.transform = 'translateY(100%)';
+          setTimeout(closeSheet, 200);
+        } else {
+          s.style.transform = 'translateY(0)';
+        }
+      });
+    })();
+
     $('btnNew').addEventListener('click', quickCapture);
     $('btnBack').addEventListener('click', function () {
       var after = !!(state.editing && state.editing.phase === 'after');
