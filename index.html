@@ -183,7 +183,6 @@
   .ck-selbox{width:20px;height:20px;border-radius:50%;border:1.5px solid #c9d3de;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff;flex:0 0 auto;vertical-align:middle}
   .ck-selbox.on{background:var(--blue);border-color:var(--blue)}
   .ck-q .ck-selbox{margin-right:8px}
-  .ck-allok{border:0;background:#eaf2fa;color:var(--blue);font-size:11.5px;padding:4px 8px;border-radius:7px;flex:0 0 auto}
   .ck-bulk{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:#fff;box-shadow:0 -6px 20px rgba(16,24,40,.12);z-index:3;font-size:13.5px;color:var(--muted)}
   .ck-bulk b{color:var(--text)}
   .ck-bulk .btn{flex:1;justify-content:center}
@@ -467,7 +466,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.1.0';
+  var WEB_VERSION = '2.2.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1879,7 +1878,6 @@
         '<span class="ck-selbox' + (allSel ? ' on' : '') + '" data-gsel="' + gi + '">' + (allSel ? '✓' : '') + '</span>' +
         '<span class="nm">' + C.escapeHtml(g.name) + '</span>' +
         '<span class="meta">' + done + '/' + g.items.length + (ng ? ' · 不符合 ' + ng : '') + '</span>' +
-        '<button class="ck-allok" data-gok="' + gi + '">全合格</button>' +
         '<span class="chev">›</span></div>' +
         '<div class="ck-body">' + items.map(function (it) {
           var r = (a[it.id] && a[it.id].r) || '';
@@ -1917,19 +1915,6 @@
       else ckSel[it.id] = true;
     });
     renderChecklist();
-  }
-
-  function markGroupOk(gi) {
-    var g = CK_GROUPS[gi];
-    if (!g) return;
-    var a = ckAnswers();
-    g.items.forEach(function (it) {
-      a[it.id] = a[it.id] || { r: '', note: '' };
-      a[it.id].r = 'ok';
-    });
-    ckSave();
-    renderChecklist();
-    toast('本区 ' + g.items.length + ' 项已标合格');
   }
 
   function bulkMarkOk() {
@@ -1971,8 +1956,6 @@
         if (sb.dataset.isel) { toggleCkSel(sb.dataset.isel); return; }
         if (sb.dataset.gsel !== undefined) { toggleGroupSel(+sb.dataset.gsel); return; }
       }
-      var gok = e.target.closest('.ck-allok');
-      if (gok) { markGroupOk(+gok.dataset.gok); return; }
       var head = e.target.closest('.ck-head');
       if (head) {
         var gi = +head.parentNode.dataset.g;
