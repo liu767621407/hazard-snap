@@ -473,7 +473,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.4.1';
+  var WEB_VERSION = '2.5.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1505,7 +1505,7 @@
       } else {
         $('mNewBatch').onclick = function () { closeSheet(); backTo = 'add'; newCheck(); };
         $('mSettings').onclick = function () { closeSheet(); backTo = 'add'; openSetup('edit'); };
-        $('mNewList').onclick = function () { closeSheet(); openNewChecklistSheet(); };
+        $('mNewList').onclick = function () { closeSheet(); openChecklistManager(false); };
       }
       Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
         var isCur = b.classList.contains('on') || b.classList.contains('dis');
@@ -1877,6 +1877,8 @@
   CK_GROUPS.forEach(function (g) { g.items.forEach(function (it) { CK_FLAT.push(it); }); });
   var ckMeta = { open: {}, filter: 'all' };
   var ckSel = {};
+  var ckMgrMode = false;
+  var ckMgrSel = {};
 
   function ckAnswers() {
     if (!state.batch.checklist) state.batch.checklist = { answers: {} };
@@ -1906,6 +1908,138 @@
     if ($('ckSearch')) $('ckSearch').value = '';
     renderChecklist();
     showView('checklist');
+  }
+
+  function ckListStats(b) {
+    var a = (b && b.checklist && b.checklist.answers) || {};
+    var done = 0, ng = 0;
+    Object.keys(a).forEach(function (k) {
+      var v = a[k] || {};
+      if (v.r) { done++; if (v.r === 'ng') ng++; }
+    });
+    return { done: done, ng: ng, total: CK_FLAT.length };
+  }
+
+  async function openChecklistManager(manage) {
+    ckMgrMode = !!manage;
+    var all = await dbAll('batches');
+    all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
+    var selN = Object.keys(ckMgrSel).length;
+    var rows = all.map(function (b) {
+      var w = batchWhen(b);
+      var nm = (b.meta.name || '').trim();
+      var label = nm
+        ? C.escapeHtml(nm) + '<span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span>'
+        : C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '');
+      var st = ckListStats(b);
+      var on = b.id === state.batch.id;
+      var sel = !on && !!ckMgrSel[b.id];
+      if (ckMgrMode) {
+        return '<div class="cm-row' + (on ? ' dis' : '') + (sel ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
+          '<span class="cm-check">' + (sel ? '✓' : '') + '</span>' +
+          '<span class="d">' + label + '</span>' +
+          (on ? '<span class="badge">当前</span>' : '') +
+          '<span class="n">' + st.done + '/' + st.total + ' · 不符合 ' + st.ng + '</span></div>';
+      }
+      return '<div class="sh-hist' + (on ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
+        '<span class="dot"></span>' +
+        '<span class="d">' + label + '</span>' +
+        (on ? '<span class="badge">当前</span>' : '') +
+        '<span class="n">已检 ' + st.done + '</span></div>';
+    }).join('');
+    openSheet(
+      '<div class="sh-grab"></div>' +
+      '<div class="sh-hd"><div><div class="tt">' + (ckMgrMode ? '管理清单' : '检查清单') + '</div>' +
+      '<div class="mt">' + (ckMgrMode ? '删除会连同该检查的隐患与照片；当前清单不能删'
+        : '共 ' + all.length + ' 份，点一条打开清单') + '</div></div>' +
+      '<button class="sh-x" id="mClClose">' +
+      (ckMgrMode ? '<span style="font-size:13px">取消</span>' : svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b')) +
+      '</button></div>' +
+      (ckMgrMode ? '' :
+        '<div class="sh-primary" id="mClNew">' +
+        '<span class="ib">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 20, '#ffffff') + '</span>' +
+        '<span class="pt"><span class="t">新建清单</span><span class="s">空白或复制上次清单</span></span>' +
+        svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>') +
+      '<div class="sh-sec"><span>历史清单</span><span>' + (ckMgrMode ? '已选 ' + selN + ' 份' : '共 ' + all.length + ' 份') + '</span></div>' +
+      (rows || '<div class="sh-hist"><span class="d">暂无</span></div>') +
+      (ckMgrMode
+        ? '<div class="cm-actions"><div class="btn ghost" id="mClAll">全选</div>' +
+          '<div class="btn primary' + (selN ? '' : ' disabled') + '" id="mClDel">删除（' + selN + '）</div>' +
+          '<div class="btn ghost" id="mClCancel">取消</div></div>'
+        : '') +
+      '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
+    );
+    $('mClClose').onclick = function () {
+      if (ckMgrMode) { ckMgrSel = {}; openChecklistManager(false); return; }
+      closeSheet();
+    };
+    if (ckMgrMode) {
+      $('mClAll').onclick = function () {
+        var list = $('sheet').querySelectorAll('.cm-row[data-batch]:not(.dis)');
+        var every = list.length && Array.prototype.every.call(list, function (r) { return ckMgrSel[r.dataset.batch]; });
+        ckMgrSel = {};
+        Array.prototype.forEach.call(list, function (r) { if (!every) ckMgrSel[r.dataset.batch] = true; });
+        openChecklistManager(true);
+      };
+      $('mClCancel').onclick = function () { ckMgrSel = {}; openChecklistManager(false); };
+      $('mClDel').onclick = async function () {
+        var ids = Object.keys(ckMgrSel).filter(function (id) { return id !== state.batch.id; });
+        if (!ids.length) return;
+        if (!confirm('删除 ' + ids.length + ' 条检查（含隐患记录和照片，不可恢复）？')) return;
+        for (var i = 0; i < ids.length; i++) {
+          var ps = await dbIndex('photos', 'byBatch', ids[i]);
+          for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
+          await dbDel('batches', ids[i]);
+        }
+        ckMgrSel = {};
+        toast('已删除 ' + ids.length + ' 条检查');
+        openChecklistManager(false);
+      };
+    } else {
+      $('mClNew').onclick = function () { openNewChecklistSheet(); };
+    }
+    Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (r) {
+      var on = r.classList.contains('on') || r.classList.contains('dis');
+      if (ckMgrMode) {
+        if (!on) r.onclick = function () {
+          if (ckMgrSel[r.dataset.batch]) delete ckMgrSel[r.dataset.batch];
+          else ckMgrSel[r.dataset.batch] = true;
+          openChecklistManager(true);
+        };
+        return;
+      }
+      var timer = null, longPressed = false;
+      var start = function () {
+        longPressed = false;
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          longPressed = true;
+          ckMgrSel = {};
+          if (!on) ckMgrSel[r.dataset.batch] = true;
+          openChecklistManager(true);
+        }, 480);
+      };
+      var cancel = function () { clearTimeout(timer); };
+      r.addEventListener('touchstart', start, { passive: true });
+      r.addEventListener('touchend', cancel);
+      r.addEventListener('touchmove', cancel, { passive: true });
+      r.addEventListener('mousedown', start);
+      r.addEventListener('mouseup', cancel);
+      r.addEventListener('mouseleave', cancel);
+      r.onclick = function () {
+        if (longPressed) { longPressed = false; return; }
+        closeSheet();
+        ckMgrOpen(r.dataset.batch);
+      };
+    });
+  }
+
+  async function ckMgrOpen(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    state.batch = b;
+    await refreshPhotos();
+    openChecklist();
   }
 
   function copyChecklistAnswers(src) {
@@ -2108,7 +2242,7 @@
     $('btnMenu').addEventListener('click', function () { openMenu('detail'); });
     $('btnAdd').addEventListener('click', function () { openMenu('add'); });
     $('btnCkBack').addEventListener('click', goUp);
-    $('btnCkNew').addEventListener('click', openNewChecklistSheet);
+    $('btnCkNew').addEventListener('click', function () { openChecklistManager(false); });
     $('btnCkExport').addEventListener('click', function () {
       exportChecklistRecord().catch(function (e) {
         console.error(e);
