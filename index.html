@@ -180,6 +180,14 @@
   .ck-act .ph i{font-style:normal;font-size:11px;color:var(--blue);margin-left:2px}
   .ck-note{width:100%;margin-top:8px;min-height:52px;border:1px solid var(--line);border-radius:9px;padding:8px;font-size:13.5px;resize:vertical}
   .ck-empty{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
+  .ck-selbox{width:20px;height:20px;border-radius:50%;border:1.5px solid #c9d3de;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff;flex:0 0 auto;vertical-align:middle}
+  .ck-selbox.on{background:var(--blue);border-color:var(--blue)}
+  .ck-q .ck-selbox{margin-right:8px}
+  .ck-allok{border:0;background:#eaf2fa;color:var(--blue);font-size:11.5px;padding:4px 8px;border-radius:7px;flex:0 0 auto}
+  .ck-bulk{position:fixed;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:#fff;box-shadow:0 -6px 20px rgba(16,24,40,.12);z-index:3;font-size:13.5px;color:var(--muted)}
+  .ck-bulk b{color:var(--text)}
+  .ck-bulk .btn{flex:1;justify-content:center}
+  .ck-bulk .btn.ghost{flex:0 0 80px}
   .sec-link{color:var(--blue);font-weight:500;margin-right:2px}
   .cm-row{display:flex;align-items:center;gap:10px;margin:2px 12px;padding:10px;border-radius:12px}
   .cm-row:active{background:#f4f8fc}
@@ -433,6 +441,11 @@
     <button data-f="ng">不符合</button>
   </div>
   <div id="ckList" class="ck-list"></div>
+  <div class="ck-bulk hidden" id="ckBulk">
+    <span>已选 <b id="ckBulkN">0</b> 项</span>
+    <button class="btn primary" id="ckBulkOk">标记合格</button>
+    <button class="btn ghost" id="ckBulkClear">取消</button>
+  </div>
 </section>
 
 <div id="mask" class="mask hidden">
@@ -1740,6 +1753,7 @@
   var CK_FLAT = [];
   CK_GROUPS.forEach(function (g) { g.items.forEach(function (it) { CK_FLAT.push(it); }); });
   var ckMeta = { open: {}, filter: 'all' };
+  var ckSel = {};
 
   function ckAnswers() {
     if (!state.batch.checklist) state.batch.checklist = { answers: {} };
@@ -1765,6 +1779,7 @@
 
   function openChecklist() {
     ckMeta.filter = 'all';
+    ckSel = {};
     if ($('ckSearch')) $('ckSearch').value = '';
     renderChecklist();
     showView('checklist');
@@ -1807,16 +1822,22 @@
         if (r === 'ng') ng++;
       });
       var open = ckMeta.filter !== 'all' || !!q || ckMeta.open[gi];
+      var allSel = items.length && items.every(function (it) { return ckSel[it.id]; });
       html += '<div class="ck-group' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
-        '<div class="ck-head"><span class="nm">' + C.escapeHtml(g.name) + '</span>' +
+        '<div class="ck-head">' +
+        '<span class="ck-selbox' + (allSel ? ' on' : '') + '" data-gsel="' + gi + '">' + (allSel ? '✓' : '') + '</span>' +
+        '<span class="nm">' + C.escapeHtml(g.name) + '</span>' +
         '<span class="meta">' + done + '/' + g.items.length + (ng ? ' · 不符合 ' + ng : '') + '</span>' +
+        '<button class="ck-allok" data-gok="' + gi + '">全合格</button>' +
         '<span class="chev">›</span></div>' +
         '<div class="ck-body">' + items.map(function (it) {
           var r = (a[it.id] && a[it.id].r) || '';
           var note = (a[it.id] && a[it.id].note) || '';
           var nimg = ckHazardCount(it.no);
+          var sel = !!ckSel[it.id];
           return '<div class="ck-item" data-id="' + it.id + '">' +
-            '<div class="ck-q"><b>' + it.no + '</b>' + C.escapeHtml(it.text) + '</div>' +
+            '<div class="ck-q"><span class="ck-selbox' + (sel ? ' on' : '') + '" data-isel="' + it.id + '">' + (sel ? '✓' : '') + '</span>' +
+            '<b>' + it.no + '</b>' + C.escapeHtml(it.text) + '</div>' +
             '<div class="ck-act"><button class="ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok">合格</button>' +
             '<button class="ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng">不符合</button>' +
             '<button class="ph" data-photo="1">📷' + (nimg ? '<i>' + nimg + '</i>' : '') + '</button></div>' +
@@ -1825,6 +1846,53 @@
         }).join('') + '</div></div>';
     });
     $('ckList').innerHTML = html || '<div class="ck-empty">没有符合条件的检查项</div>';
+    var selN = Object.keys(ckSel).length;
+    $('ckBulk').classList.toggle('hidden', !selN);
+    $('ckBulkN').textContent = selN;
+  }
+
+  function toggleCkSel(id) {
+    if (ckSel[id]) delete ckSel[id];
+    else ckSel[id] = true;
+    renderChecklist();
+  }
+
+  function toggleGroupSel(gi) {
+    var g = CK_GROUPS[gi];
+    if (!g) return;
+    var all = g.items.every(function (it) { return ckSel[it.id]; });
+    g.items.forEach(function (it) {
+      if (all) delete ckSel[it.id];
+      else ckSel[it.id] = true;
+    });
+    renderChecklist();
+  }
+
+  function markGroupOk(gi) {
+    var g = CK_GROUPS[gi];
+    if (!g) return;
+    var a = ckAnswers();
+    g.items.forEach(function (it) {
+      a[it.id] = a[it.id] || { r: '', note: '' };
+      a[it.id].r = 'ok';
+    });
+    ckSave();
+    renderChecklist();
+    toast('本区 ' + g.items.length + ' 项已标合格');
+  }
+
+  function bulkMarkOk() {
+    var ids = Object.keys(ckSel);
+    if (!ids.length) return;
+    var a = ckAnswers();
+    ids.forEach(function (id) {
+      a[id] = a[id] || { r: '', note: '' };
+      a[id].r = 'ok';
+    });
+    ckSel = {};
+    ckSave();
+    renderChecklist();
+    toast('已把 ' + ids.length + ' 项标为合格');
   }
 
   // ---------------- 事件绑定 ----------------
@@ -1841,6 +1909,13 @@
       renderChecklist();
     });
     $('ckList').addEventListener('click', function (e) {
+      var sb = e.target.closest('.ck-selbox');
+      if (sb) {
+        if (sb.dataset.isel) { toggleCkSel(sb.dataset.isel); return; }
+        if (sb.dataset.gsel !== undefined) { toggleGroupSel(+sb.dataset.gsel); return; }
+      }
+      var gok = e.target.closest('.ck-allok');
+      if (gok) { markGroupOk(+gok.dataset.gok); return; }
       var head = e.target.closest('.ck-head');
       if (head) {
         var gi = +head.parentNode.dataset.g;
@@ -1867,6 +1942,8 @@
       ckSave();
       renderChecklist();
     });
+    $('ckBulkOk').addEventListener('click', bulkMarkOk);
+    $('ckBulkClear').addEventListener('click', function () { ckSel = {}; renderChecklist(); });
     $('ckList').addEventListener('change', function (e) {
       if (!e.target.classList.contains('ck-note')) return;
       var item = e.target.closest('.ck-item');
