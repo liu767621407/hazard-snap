@@ -362,7 +362,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.9.9';
+  var WEB_VERSION = '1.10.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1179,7 +1179,7 @@
 
     $('mExport').onclick = function () { closeSheet(); openExport(); };
     $('mSettings').onclick = function () { closeSheet(); openSetup('edit'); };
-    $('mNewBatch').onclick = function () { closeSheet(); openSetup('new'); };
+    $('mNewBatch').onclick = function () { closeSheet(); newCheck(); };
     $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
     var upd = $('mUpdate');
     if (upd) {
@@ -1210,6 +1210,16 @@
         el.textContent = '已是最新';
       }
     } catch (e) {}
+  }
+
+  async function newCheck() {
+    var b = newBatchMeta(state.cfg || {});
+    await dbPut('batches', b);
+    state.batch = b;
+    state.photos = [];
+    showView('home');
+    openSetup('edit');
+    toast('已新建检查，填好信息就可以拍照');
   }
 
   async function switchBatch(id) {
@@ -1383,7 +1393,7 @@
       await refreshPhotos();
       showView('home');
     } else {
-      openSetup('new');
+      await newCheck();
     }
     updateBadge();
   }
