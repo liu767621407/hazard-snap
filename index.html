@@ -376,7 +376,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '1.10.3';
+  var WEB_VERSION = '1.10.4';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -384,6 +384,7 @@
   var pendingQuick = false;
   var quickTimer = null;
   var checkSel = {};
+  var backTo = null;
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -892,7 +893,7 @@
     var v = document.body.dataset.view;
     if (v === 'home' || !state.batch) return;
     if (v === 'edit') { $('btnBack').click(); return; }
-    showView('home');
+    goUp();
   });
 
   // ---------------- 保存 ----------------
@@ -922,6 +923,7 @@
       return;
     }
     await saveBatch();
+    backTo = null;
     if (next && !after) {
       showView('home');
       quickCapture();
@@ -1063,6 +1065,7 @@
     if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
+      backTo = 'export';
       openSetup('edit');
       return;
     }
@@ -1088,6 +1091,7 @@
     if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
+      backTo = 'export';
       openSetup('edit');
       return;
     }
@@ -1200,9 +1204,9 @@
       '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
     );
 
-    $('mExport').onclick = function () { closeSheet(); openExport(); };
-    $('mSettings').onclick = function () { closeSheet(); openSetup('edit'); };
-    $('mNewBatch').onclick = function () { closeSheet(); newCheck(); };
+    $('mExport').onclick = function () { closeSheet(); backTo = 'menu'; openExport(); };
+    $('mSettings').onclick = function () { closeSheet(); backTo = 'menu'; openSetup('edit'); };
+    $('mNewBatch').onclick = function () { closeSheet(); backTo = 'menu'; newCheck(); };
     $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
     var upd = $('mUpdate');
     if (upd) {
@@ -1493,6 +1497,7 @@
       return;
     }
     saveBatch();
+    backTo = null;
     showView('home');
     toast('已保存本次检查信息');
   }
@@ -1599,13 +1604,13 @@
     });
     $('btnSaveBack').addEventListener('click', function () { saveEdit(false); });
     $('btnSaveNext').addEventListener('click', function () { saveEdit(true); });
-    $('btnSetBack').addEventListener('click', function () { showView('home'); });
+    $('btnSetBack').addEventListener('click', goUp);
     $('btnSaveCfg').addEventListener('click', saveSetup);
     $('btnManage').addEventListener('click', function () { setSelecting(true); });
     $('btnSelAll').addEventListener('click', selectAllToggle);
     $('btnSelDelete').addEventListener('click', deleteSelected);
     $('btnSelDone').addEventListener('click', function () { setSelecting(false); });
-    $('btnExportBack').addEventListener('click', function () { showView('home'); });
+    $('btnExportBack').addEventListener('click', goUp);
     $('btnExportDocx').addEventListener('click', exportNotice);
     $('btnExportPdf').addEventListener('click', exportPdf);
     $('btnExportZip').addEventListener('click', exportBatch);
@@ -1673,22 +1678,23 @@
       if (!$('mask').classList.contains('hidden')) { closeSheet(); return true; }
       var view = document.body.dataset.view;
       if (view === 'edit') { $('btnBack').click(); return true; }
-      if (view === 'export') { showView('home'); return true; }
-      if (view === 'settings') {
-        // 从清单按返回进来的：再按一次就退出；从菜单进来的：回清单
-        if (state.setupFromBack) return false;
-        if (state.setupMode === 'new' && !state.batch) return false;
-        showView('home');
-        return true;
-      }
+      if (view === 'export' || view === 'settings') { goUp(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
-      if (view === 'home' && state.batch) {
-        openSetup('edit', true);   // 清单的上一级 = 本次检查信息
-        return true;
-      }
     } catch (e) { console.warn('SnapBack', e); }
     return false;
   };
+
+  // 返回上一级：从菜单进来的回菜单，否则回清单
+  function goUp() {
+    var to = backTo || 'home';
+    backTo = null;
+    if (to === 'menu') {
+      showView('home');
+      openMenu();
+      return;
+    }
+    showView(to);
+  }
 
   if (!window.SnapCore) {
     var el = $('fatal');
