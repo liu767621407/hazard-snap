@@ -138,6 +138,42 @@
   .sh-foot{text-align:center;font-size:11px;color:#a3afbb;margin-top:16px}
   body.sheet-open{overflow:hidden}
   #sheet{transition:transform .2s ease;will-change:transform}
+  /* 检查清单 */
+  #ckEntryWrap{padding:0 16px 8px}
+  .ckentry{display:flex;align-items:center;gap:10px;width:100%;padding:13px 14px;border:0;border-radius:14px;background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.05);text-align:left}
+  .ckentry:active{background:#f6f9fc}
+  .ckentry-t{font-size:15px;font-weight:600;color:var(--text)}
+  .ckentry-s{flex:1;font-size:12.5px;color:var(--muted);text-align:right}
+  .ckentry-chev{color:#b6c1cc;font-size:18px}
+  #viewChecklist{position:fixed;inset:0;z-index:34;background:var(--bg);overflow-y:auto;padding-bottom:30px}
+  #viewChecklist header{position:sticky;top:0;z-index:2}
+  .ck-sum{background:#fff;padding:12px 16px;border-bottom:1px solid var(--line)}
+  .ck-bar{height:8px;border-radius:4px;background:#e6edf5;overflow:hidden}
+  .ck-bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
+  .ck-nums{display:flex;gap:14px;font-size:12.5px;color:var(--muted);margin-top:8px}
+  .ck-nums b{color:var(--text)}
+  .ck-tabs{display:flex;gap:8px;padding:10px 16px;background:#fff}
+  .ck-tabs button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:13.5px;color:var(--muted)}
+  .ck-tabs button.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .ck-list{padding:10px 12px 30px}
+  .ck-group{background:#fff;border-radius:12px;margin-bottom:10px;overflow:hidden}
+  .ck-head{display:flex;align-items:center;gap:8px;padding:13px 14px;font-size:15px}
+  .ck-head .nm{flex:1;font-weight:500;color:var(--text)}
+  .ck-head .meta{font-size:12px;color:var(--muted)}
+  .ck-head .chev{color:#b6c1cc;transition:transform .15s}
+  .ck-group.open .ck-head .chev{transform:rotate(90deg)}
+  .ck-body{display:none;border-top:1px solid var(--line)}
+  .ck-group.open .ck-body{display:block}
+  .ck-item{padding:12px 14px;border-top:1px solid #f0f4f8}
+  .ck-item:first-child{border-top:0}
+  .ck-q{font-size:14px;line-height:1.55;color:var(--text)}
+  .ck-q b{color:var(--muted);font-weight:600;margin-right:6px}
+  .ck-act{display:flex;gap:8px;margin-top:10px}
+  .ck-act button{flex:1;padding:8px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:13.5px;color:var(--muted)}
+  .ck-act .ok.on{background:#e7f6ed;border-color:#1e8e5a;color:#1e8e5a}
+  .ck-act .ng.on{background:#fdecec;border-color:#c0392b;color:#c0392b}
+  .ck-note{width:100%;margin-top:8px;min-height:52px;border:1px solid var(--line);border-radius:9px;padding:8px;font-size:13.5px;resize:vertical}
+  .ck-empty{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
   .sec-link{color:var(--blue);font-weight:500;margin-right:2px}
   .cm-row{display:flex;align-items:center;gap:10px;margin:2px 12px;padding:10px;border-radius:12px}
   .cm-row:active{background:#f4f8fc}
@@ -218,6 +254,13 @@
     <span>·</span>
     <span id="statSize">0 MB</span>
     <button class="linkbtn" id="btnManage">管理</button>
+  </div>
+  <div id="ckEntryWrap" class="hidden">
+    <button class="ckentry" id="ckEntry">
+      <span class="ckentry-t">📋 检查清单</span>
+      <span class="ckentry-s" id="ckEntrySub"></span>
+      <span class="ckentry-chev">›</span>
+    </button>
   </div>
   <div id="hazardList" class="list"></div>
   <div id="emptyHome" class="empty hidden">还没有拍隐患。<br>点下面的“📷 拍照”，横持手机拍 4:3 照片。</div>
@@ -311,7 +354,7 @@
     <div class="field"><label>检查地点</label><input id="cfgLocation" placeholder="甲子背稀土矿"></div>
     <div class="row2 field">
       <div style="flex:1"><label>检查类型</label>
-        <select id="cfgType"><option>一般检查</option><option>专项检查</option></select>
+        <select id="cfgType"><option>一般检查</option><option>专项检查</option><option>清单化检查（189条）</option></select>
       </div>
     </div>
     <div class="field"><label>专项名称（专项检查才填）</label><input id="cfgSpecial" placeholder="如：消防安全专项检查"></div>
@@ -360,6 +403,24 @@
   <p class="hint" style="margin:12px">生成后弹出系统分享面板：选微信 → 文件传输助手/好友，或“保存到文件”。</p>
 </section>
 
+<!-- 清单化检查（189 条） -->
+<section id="viewChecklist" class="hidden">
+  <header>
+    <button class="iconbtn" id="btnCkBack" aria-label="返回">←</button>
+    <div class="titles"><h1>检查清单</h1><div class="sub" id="ckSub"></div></div>
+  </header>
+  <div class="ck-sum">
+    <div class="ck-bar"><i id="ckBar"></i></div>
+    <div class="ck-nums" id="ckNums"></div>
+  </div>
+  <div class="ck-tabs" id="ckTabs">
+    <button data-f="all" class="on">全部</button>
+    <button data-f="todo">未检</button>
+    <button data-f="ng">不符合</button>
+  </div>
+  <div id="ckList" class="ck-list"></div>
+</section>
+
 <div id="mask" class="mask hidden">
   <div class="sheet" id="sheet"></div>
 </div>
@@ -370,6 +431,7 @@
 <script src="core.js"></script>
 <script src="docx.js"></script>
 <script src="pdf.js"></script>
+<script src="checklist.js"></script>
 <script>
 (function () {
   'use strict';
@@ -496,7 +558,8 @@
         requirement: '',
         receiver_opinion: ''
       },
-      hazards: []
+      hazards: [],
+      checklist: { answers: {} }
     };
   }
 
@@ -667,6 +730,12 @@
     $('selBar').classList.toggle('hidden', !state.selecting);
     $('btnManage').classList.toggle('hidden', state.selecting);
     document.querySelector('.fabbar').classList.toggle('hidden', state.selecting);
+    var isCk = (batch.meta.check_type || '').indexOf('清单化') >= 0;
+    $('ckEntryWrap').classList.toggle('hidden', !isCk);
+    if (isCk) {
+      var cst = ckStats();
+      $('ckEntrySub').textContent = '已检 ' + cst.done + '/' + cst.total + ' · 不符合 ' + cst.ng;
+    }
     batch.hazards.forEach(function (h, idx) {
       var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
       var before = photosOf(h.id, 'before').length;
@@ -881,6 +950,7 @@
     $('viewEdit').classList.toggle('hidden', name !== 'edit');
     $('viewSettings').classList.toggle('hidden', name !== 'settings');
     $('viewExport').classList.toggle('hidden', name !== 'export');
+    $('viewChecklist').classList.toggle('hidden', name !== 'checklist');
     $('topbar').classList.toggle('hidden', name !== 'home');
     document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home' || state.selecting);
     // Chrome/PWA：用 history 让系统返回键回到上一级（APK 里走 SnapBack，不重复记历史）
@@ -956,6 +1026,25 @@
       },
       hazards: []
     };
+    if (batch.checklist && batch.checklist.answers) {
+      var ckItems = [];
+      CK_FLAT.forEach(function (it) {
+        var ans = batch.checklist.answers[it.id];
+        if (!ans || (!ans.r && !ans.note)) return;
+        var gname = '';
+        CK_GROUPS.forEach(function (g) {
+          if (g.items.indexOf(it) >= 0) gname = g.name;
+        });
+        ckItems.push({ no: it.no, group: gname, text: it.text, result: ans.r || '', note: ans.note || '' });
+      });
+      payload.checklist = {
+        total: CK_FLAT.length,
+        answered: ckItems.length,
+        ok: ckItems.filter(function (x) { return x.result === 'ok'; }).length,
+        ng: ckItems.filter(function (x) { return x.result === 'ng'; }).length,
+        items: ckItems
+      };
+    }
     var hazards = batch.hazards.slice().sort(function (a, b) { return a.seq - b.seq; });
     for (var i = 0; i < hazards.length; i++) {
       var h = hazards[i];
@@ -1535,9 +1624,134 @@
     updateBadge();
   }
 
+  // ---------------- 清单化检查（189 条） ----------------
+  var CK_GROUPS = [];
+  (function () {
+    var no = 0;
+    (window.SnapChecklist || []).forEach(function (g) {
+      var items = g.items.map(function (t) {
+        no++;
+        return { id: 'q' + no, no: no, text: t };
+      });
+      CK_GROUPS.push({ name: g.name, items: items });
+    });
+  })();
+  var CK_FLAT = [];
+  CK_GROUPS.forEach(function (g) { g.items.forEach(function (it) { CK_FLAT.push(it); }); });
+  var ckMeta = { open: {}, filter: 'all' };
+
+  function ckAnswers() {
+    if (!state.batch.checklist) state.batch.checklist = { answers: {} };
+    if (!state.batch.checklist.answers) state.batch.checklist.answers = {};
+    return state.batch.checklist.answers;
+  }
+
+  function ckStats() {
+    var a = ckAnswers();
+    var done = 0, ok = 0, ng = 0;
+    CK_FLAT.forEach(function (it) {
+      var r = a[it.id] && a[it.id].r;
+      if (r === 'ok') { done++; ok++; }
+      else if (r === 'ng') { done++; ng++; }
+    });
+    return { total: CK_FLAT.length, done: done, ok: ok, ng: ng };
+  }
+
+  function ckSave() {
+    state.batch.checklist.updated = C.isoNow();
+    saveBatch();
+  }
+
+  function openChecklist() {
+    ckMeta.filter = 'all';
+    renderChecklist();
+    showView('checklist');
+  }
+
+  function renderChecklist() {
+    var a = ckAnswers();
+    var st = ckStats();
+    $('ckSub').textContent = (state.batch.meta.short_unit || state.batch.meta.unit || '') + ' · ' + state.batch.meta.check_date;
+    $('ckNums').innerHTML = '已检 <b>' + st.done + '</b>/' + st.total +
+      ' · 合格 <b>' + st.ok + '</b> · 不符合 <b>' + st.ng + '</b> · 未检 <b>' + (st.total - st.done) + '</b>';
+    $('ckBar').style.width = (st.total ? Math.round(st.done / st.total * 100) : 0) + '%';
+    Array.prototype.forEach.call($('ckTabs').children, function (b) {
+      b.classList.toggle('on', b.dataset.f === ckMeta.filter);
+    });
+    var html = '';
+    CK_GROUPS.forEach(function (g, gi) {
+      var items = g.items.filter(function (it) {
+        var r = a[it.id] && a[it.id].r;
+        if (ckMeta.filter === 'todo') return !r;
+        if (ckMeta.filter === 'ng') return r === 'ng';
+        return true;
+      });
+      if (!items.length) return;
+      var done = 0, ng = 0;
+      g.items.forEach(function (it) {
+        var r = a[it.id] && a[it.id].r;
+        if (r) done++;
+        if (r === 'ng') ng++;
+      });
+      var open = ckMeta.filter !== 'all' || ckMeta.open[gi];
+      html += '<div class="ck-group' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
+        '<div class="ck-head"><span class="nm">' + C.escapeHtml(g.name) + '</span>' +
+        '<span class="meta">' + done + '/' + g.items.length + (ng ? ' · 不符合 ' + ng : '') + '</span>' +
+        '<span class="chev">›</span></div>' +
+        '<div class="ck-body">' + items.map(function (it) {
+          var r = (a[it.id] && a[it.id].r) || '';
+          var note = (a[it.id] && a[it.id].note) || '';
+          return '<div class="ck-item" data-id="' + it.id + '">' +
+            '<div class="ck-q"><b>' + it.no + '</b>' + C.escapeHtml(it.text) + '</div>' +
+            '<div class="ck-act"><button class="ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok">合格</button>' +
+            '<button class="ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng">不符合</button></div>' +
+            (r === 'ng' ? '<textarea class="ck-note" placeholder="问题描述（选填）">' + C.escapeHtml(note) + '</textarea>' : '') +
+            '</div>';
+        }).join('') + '</div></div>';
+    });
+    $('ckList').innerHTML = html || '<div class="ck-empty">没有符合条件的检查项</div>';
+  }
+
   // ---------------- 事件绑定 ----------------
   function bind() {
     $('btnMenu').addEventListener('click', function () { openMenu(false); });
+    $('btnCkBack').addEventListener('click', goUp);
+    $('ckEntry').addEventListener('click', openChecklist);
+    $('ckTabs').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      ckMeta.filter = b.dataset.f;
+      renderChecklist();
+    });
+    $('ckList').addEventListener('click', function (e) {
+      var head = e.target.closest('.ck-head');
+      if (head) {
+        var gi = +head.parentNode.dataset.g;
+        ckMeta.open[gi] = !ckMeta.open[gi];
+        head.parentNode.classList.toggle('open', !!ckMeta.open[gi]);
+        return;
+      }
+      var btn = e.target.closest('.ck-act button');
+      if (!btn) return;
+      var item = btn.closest('.ck-item');
+      var id = item.dataset.id;
+      var a = ckAnswers();
+      var cur = a[id] || { r: '', note: '' };
+      var r = btn.dataset.r;
+      cur.r = (cur.r === r) ? '' : r;
+      a[id] = cur;
+      ckSave();
+      renderChecklist();
+    });
+    $('ckList').addEventListener('change', function (e) {
+      if (!e.target.classList.contains('ck-note')) return;
+      var item = e.target.closest('.ck-item');
+      var a = ckAnswers();
+      var id = item.dataset.id;
+      if (!a[id]) a[id] = { r: 'ng', note: '' };
+      a[id].note = e.target.value;
+      ckSave();
+    });
     $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
 
     // 面板下拉关闭（顶部区域，列表未滚动时）
@@ -1664,7 +1878,7 @@
       }
       var view = document.body.dataset.view;
       if (view === 'edit') { $('btnBack').click(); return true; }
-      if (view === 'export' || view === 'settings') { goUp(); return true; }
+      if (view === 'export' || view === 'settings' || view === 'checklist') { goUp(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
     } catch (e) { console.warn('SnapBack', e); }
     return false;
