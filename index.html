@@ -347,6 +347,10 @@
     <div class="titles"><h1 id="setupTitle">新建检查</h1><div class="sub" id="setupSub">先填检查信息，再逐条拍隐患</div></div>
   </header>
   <div class="section">
+    <h3>检查名称（可空）</h3>
+    <input id="cfgName" placeholder="如：11月安全环保检查；留空则用日期时间">
+  </div>
+  <div class="section">
     <h3>受查单位 <span style="color:var(--danger)">*</span></h3>
     <input id="cfgUnit" placeholder="单位全称">
     <div class="field"><label>单位简称</label><input id="cfgShort" placeholder="如：甲子背稀土矿"></div>
@@ -449,13 +453,14 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.0.0';
+  var WEB_VERSION = '2.1.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
   };
   var pendingQuick = false;
   var pendingCk = null;
+  var lastTap = { id: '', t: 0 };
   var quickTimer = null;
   var checkSel = {};
   var histMode = false;
@@ -557,6 +562,7 @@
       updated: C.isoNow(),
       exported_at: '',
       meta: {
+        name: cfg.name || '',
         check_date: C.todayStr(now),
         unit: cfg.unit || '',
         short_unit: cfg.short_unit || '',
@@ -729,7 +735,9 @@
   function renderHeader() {
     var cfg = state.cfg;
     $('hdrUnit').textContent = (state.batch && state.batch.meta.unit) || cfg.unit || '未设置单位';
-    $('hdrDate').textContent = state.batch ? state.batch.meta.check_date + ' · ' + state.batch.hazards.length + ' 条' : '';
+    var b0 = state.batch;
+    var nm = b0 ? (b0.meta.name || '').trim() : '';
+    $('hdrDate').textContent = b0 ? ((nm || b0.meta.check_date) + ' · ' + b0.hazards.length + ' 条') : '';
   }
 
   function renderHome() {
@@ -1059,6 +1067,7 @@
       exported_at: C.isoNow(),
       batch: {
         id: batch.id, created: batch.created, check_date: batch.meta.check_date,
+        name: batch.meta.name || '',
         unit: batch.meta.unit, short_unit: batch.meta.short_unit,
         issue_unit: batch.meta.issue_unit, inspectors: batch.meta.inspectors,
         location: batch.meta.location, check_type: batch.meta.check_type,
@@ -1293,24 +1302,27 @@
     var cur = state.batch;
     var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
     var when = batchWhen(cur);
-    var meta = [when.date, when.time, cur.hazards.length + ' 条隐患', C.formatBytes(bytes)]
+    var meta = [(cur.meta.name || '').trim(), when.date, when.time, cur.hazards.length + ' 条隐患', C.formatBytes(bytes)]
       .filter(Boolean).join(' · ');
     var selected = Object.keys(checkSel).length;
     var hist = batches.map(function (b) {
       var w = batchWhen(b);
       var on = b.id === cur.id;
       var sel = !on && !!checkSel[b.id];
+      var nm = (b.meta.name || '').trim();
+      var label = nm
+        ? C.escapeHtml(nm) + '<span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span>'
+        : C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '');
       if (histMode) {
         return '<div class="cm-row' + (on ? ' dis' : '') + (sel ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
           '<span class="cm-check">' + (sel ? '✓' : '') + '</span>' +
-          '<span class="d">' + C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '') + '</span>' +
+          '<span class="d">' + label + '</span>' +
           (on ? '<span class="badge">当前</span>' : '') +
           '<span class="n">' + b.hazards.length + ' 条</span></div>';
       }
       return '<div class="sh-hist' + (on ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
         '<span class="dot"></span>' +
-        '<span class="d">' + C.escapeHtml(w.date) +
-        (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '') + '</span>' +
+        '<span class="d">' + label + '</span>' +
         (on ? '<span class="badge">当前</span>' : '') +
         '<span class="n">' + b.hazards.length + ' 条</span></div>';
     }).join('');
@@ -1385,8 +1397,16 @@
         b.addEventListener('mouseleave', cancel);
         b.onclick = function () {
           if (longPressed) { longPressed = false; return; }
-          closeSheet();
-          if (!isCur) switchBatch(b.dataset.batch);
+          var id = b.dataset.batch;
+          var now = Date.now();
+          if (lastTap.id === id && now - lastTap.t < 420) {
+            lastTap = { id: '', t: 0 };
+            closeSheet();
+            showView('home');
+            return;
+          }
+          lastTap = { id: id, t: now };
+          selectBatch(id);
         };
       });
       return;
@@ -1503,6 +1523,19 @@
     toast('已切换到 ' + [w.date, w.time].filter(Boolean).join(' '));
   }
 
+  // 单击只选中（留在面板），双击才进随手拍
+  async function selectBatch(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    state.batch = b;
+    await refreshPhotos();
+    showView('home');
+    openMenu('add');
+    var nm = (b.meta.name || '').trim();
+    var w = batchWhen(b);
+    toast('已选中：' + (nm || [w.date, w.time].filter(Boolean).join(' ')));
+  }
+
   async function storageInfo() {
     var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
     var quota = 0;
@@ -1577,6 +1610,7 @@
     $('btnSaveCfg').textContent = mode === 'new' ? '开始检查' : '保存';
     $('btnSetBack').style.visibility = (mode === 'new' && !state.batch) ? 'hidden' : 'visible';
 
+    $('cfgName').value = meta.name || '';
     $('cfgUnit').value = meta.unit || '';
     $('cfgShort').value = meta.short_unit || '';
     $('cfgIssue').value = meta.issue_unit || '';
@@ -1596,6 +1630,7 @@
   function saveSetup() {
     var isNew = state.setupMode === 'new';
     var meta = isNew ? state.setupDraft.meta : state.batch.meta;
+    meta.name = $('cfgName').value.trim();
     meta.unit = $('cfgUnit').value.trim();
     meta.short_unit = $('cfgShort').value.trim();
     meta.issue_unit = $('cfgIssue').value.trim();
