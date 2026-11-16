@@ -189,6 +189,7 @@
   .ck-bulk b{color:var(--text)}
   .ck-bulk .btn{flex:1;justify-content:center}
   .ck-bulk .btn.ghost{flex:0 0 80px}
+  .ck-hd-btns{display:flex;gap:8px;flex:0 0 auto}
   .sec-link{color:var(--blue);font-weight:500;margin-right:2px}
   .cm-row{display:flex;align-items:center;gap:10px;margin:2px 12px;padding:10px;border-radius:12px}
   .cm-row:active{background:#f4f8fc}
@@ -430,7 +431,10 @@
   <header>
     <button class="iconbtn" id="btnCkBack" aria-label="返回">←</button>
     <div class="titles"><h1>检查清单</h1><div class="sub" id="ckSub"></div></div>
-    <button id="btnCkExport" style="border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13.5px;padding:8px 12px;border-radius:10px">导出</button>
+    <div class="ck-hd-btns">
+      <button id="btnCkNew" style="border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13.5px;padding:8px 10px;border-radius:10px">新建</button>
+      <button id="btnCkExport" style="border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13.5px;padding:8px 10px;border-radius:10px">导出</button>
+    </div>
   </header>
   <div class="ck-sum">
     <div class="ck-bar"><i id="ckBar"></i></div>
@@ -469,7 +473,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.3.1';
+  var WEB_VERSION = '2.4.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1469,6 +1473,7 @@
           svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
           '<div class="sh-grid">' +
           '<div class="sh-tile" id="mSettings">' + svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#1f4e79') + '<span>本次检查信息</span></div>' +
+          '<div class="sh-tile" id="mNewList">' + svgIcon('<path d="M9 5h9a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h3z"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>', 18, '#1f4e79') + '<span>新建清单</span></div>' +
           '</div>') +
         '<div class="sh-sec"><span>历史检查</span><span>' +
         (histMode ? '已选 ' + selected + ' 条' : '共 ' + batches.length + ' 次') + '</span></div>' +
@@ -1492,6 +1497,7 @@
       } else {
         $('mNewBatch').onclick = function () { closeSheet(); backTo = 'add'; newCheck(); };
         $('mSettings').onclick = function () { closeSheet(); backTo = 'add'; openSetup('edit'); };
+        $('mNewList').onclick = function () { closeSheet(); openNewChecklistSheet(); };
       }
       Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
         var isCur = b.classList.contains('on') || b.classList.contains('dis');
@@ -1894,6 +1900,71 @@
     showView('checklist');
   }
 
+  function copyChecklistAnswers(src) {
+    var out = {};
+    var a = (src && src.checklist && src.checklist.answers) || {};
+    Object.keys(a).forEach(function (k) {
+      var v = a[k] || {};
+      if (v.r || (v.note || '').trim()) out[k] = { r: v.r || '', note: v.note || '' };
+    });
+    return out;
+  }
+
+  async function openNewChecklistSheet() {
+    var all = await dbAll('batches');
+    all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
+    var src = null, srcN = 0;
+    for (var i = 0; i < all.length; i++) {
+      var ans = copyChecklistAnswers(all[i]);
+      var n = Object.keys(ans).length;
+      if (n) { src = all[i]; srcN = n; break; }
+    }
+    var w = src ? batchWhen(src) : null;
+    var srcName = src ? (((src.meta.name || '').trim()) || [w.date, w.time].filter(Boolean).join(' ')) : '';
+    openSheet(
+      '<div class="sh-grab"></div>' +
+      '<div class="sh-hd"><div><div class="tt">新建检查清单</div><div class="mt">会新建一条检查，当前这条保留</div></div>' +
+      '<button class="sh-x" id="mNcClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
+      '<div class="sh-primary" id="mNcBlank">' +
+      '<span class="ib">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 20, '#ffffff') + '</span>' +
+      '<span class="pt"><span class="t">新建空白清单</span><span class="s">189 条全部为未检</span></span>' +
+      svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
+      (src
+        ? '<div class="sh-grid"><div class="sh-tile" id="mNcCopy" style="flex:1">' +
+          svgIcon('<path d="M8 7V5a1 1 0 011-1h9l3 3v10a1 1 0 01-1 1h-2"/><rect x="3" y="7" width="11" height="12" rx="1"/>', 18, '#1f4e79') +
+          '<span>复制上次清单<br><small style="color:#8a97a6">' + C.escapeHtml(srcName) + ' · ' + srcN + ' 项</small></span></div></div>'
+        : '<div class="hint" style="margin:12px 20px">还没有可复制的历史清单</div>') +
+      '<div class="sh-foot">新建后仍可继续修改、导出</div>'
+    );
+    $('mNcClose').onclick = closeSheet;
+    $('mNcBlank').onclick = function () { newChecklist('blank'); };
+    var cp = $('mNcCopy');
+    if (cp) cp.onclick = function () { newChecklist('copy'); };
+  }
+
+  async function newChecklist(mode) {
+    closeSheet();
+    var b = newBatchMeta(state.cfg || {});
+    if (mode === 'copy') {
+      var all = await dbAll('batches');
+      all.sort(function (x, y) { return (y.created || '').localeCompare(x.created || ''); });
+      for (var i = 0; i < all.length; i++) {
+        var ans = copyChecklistAnswers(all[i]);
+        if (Object.keys(ans).length) {
+          b.checklist = { answers: ans, copied_from: all[i].id };
+          break;
+        }
+      }
+    }
+    await dbPut('batches', b);
+    state.batch = b;
+    state.photos = [];
+    showView('home');
+    openChecklist();
+    var n = Object.keys((b.checklist && b.checklist.answers) || {}).length;
+    toast(mode === 'copy' && n ? ('已新建清单，复制 ' + n + ' 项') : '已新建空白清单');
+  }
+
   function ckHazardCount(no) {
     return (state.batch.hazards || []).filter(function (h) {
       return h.tag && h.tag.type === 'checklist' && h.tag.no === no;
@@ -2029,6 +2100,7 @@
     $('btnMenu').addEventListener('click', function () { openMenu('detail'); });
     $('btnAdd').addEventListener('click', function () { openMenu('add'); });
     $('btnCkBack').addEventListener('click', goUp);
+    $('btnCkNew').addEventListener('click', openNewChecklistSheet);
     $('btnCkExport').addEventListener('click', function () {
       exportChecklistRecord().catch(function (e) {
         console.error(e);
