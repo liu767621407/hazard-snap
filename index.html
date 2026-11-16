@@ -473,7 +473,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.4.0';
+  var WEB_VERSION = '2.4.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1062,10 +1062,17 @@
           var note = (ans.note || '').trim();
           var txt = r === 'ok' ? '合格' : (r === 'ng' ? '不符合' : '未检');
           var pics = ckPhotoRecs(it.no);
-          var imgHtml = '';
+          var urls = [];
           for (var pi = 0; pi < pics.length; pi++) {
             var du = await ckPhotoDataUrl(pics[pi]);
-            if (du) imgHtml += '<div class="ph"><img src="' + du + '" width="212" style="width:5.6cm;height:auto"></div>';
+            if (du) urls.push(du);
+          }
+          var imgHtml = '';
+          if (urls.length) {
+            var wcm = urls.length === 1 ? 5.6 : (urls.length === 2 ? 3.2 : 2.2);
+            imgHtml = '<div class="phs">' + urls.map(function (u) {
+              return '<img src="' + u + '" style="width:' + wcm + 'cm">';
+            }).join('') + '</div>';
           }
           var cell = imgHtml + (note ? '<div class="note">' + C.escapeHtml(note) + '</div>' : '');
           if (!cell) cell = '<div class="none">—</div>';
@@ -1094,7 +1101,8 @@
         'tr.ngrow td{background:#FDECEC}' +
         'tr.ngrow td.res.ng{background:#F5B7B1}' +
         '.ph{margin:0 0 3pt}' +
-        '.ph img{display:block;margin:2pt 0;border:1px solid #bbb}' +
+        '.phs{margin:0 0 3pt;line-height:normal;white-space:nowrap}' +
+        '.phs img{display:inline;margin:0 6pt 3pt 0;border:1px solid #bbb;vertical-align:top}' +
         '.note{color:#B91C1C;font-weight:bold;line-height:1.4}' +
         '.none{color:#999;text-align:center}' +
         '</style></head><body>' +
