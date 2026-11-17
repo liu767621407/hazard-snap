@@ -473,7 +473,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.5.0';
+  var WEB_VERSION = '2.5.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1181,8 +1181,9 @@
     await saveBatch();
     backTo = null;
     if (next && !after) {
-      showView('home');
-      quickCapture();
+      // 保存后继续给“当前这条隐患”加照片，不新建隐患
+      toast('已保存，继续给这条拍照');
+      $('fileCamera').click();
     } else {
       showView('home');
       toast(after ? '整改后照片已保存' : '已保存');
