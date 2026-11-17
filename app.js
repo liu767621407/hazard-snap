@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '3.1.0';
+  var WEB_VERSION = '3.1.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -1144,9 +1144,10 @@
       (hasUpdateBridge()
         ? '<div class="sh-sys" id="mUpdate">' +
           svgIcon('<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 5v6h-6"/>', 18, '#5a6b7b') +
-          '<span class="t">检查更新</span><span class="v" id="mUpdateVal">' + C.escapeHtml(appVer || '检查') + '</span>' +
+          '<span class="t">检查更新 App 壳</span><span class="v" id="mUpdateVal">' + C.escapeHtml(appVer || '检查') + '</span>' +
           '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>'
         : '') +
+      '<div class="hint" style="padding:4px 22px 0">网页内容会自动更新；只有 App 壳（相机、安装器等）改动时才需要装新版 APK。</div>' +
       '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
     );
 
