@@ -182,6 +182,7 @@
   .ck-act .ph i{font-style:normal;font-size:11px;color:var(--blue);margin-left:2px}
   .ck-note{width:100%;margin-top:8px;min-height:52px;border:1px solid var(--line);border-radius:9px;padding:8px;font-size:13.5px;resize:vertical}
   .ck-empty{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
+  .ck-qtext{font-size:14px;line-height:1.6;color:var(--text);background:#f7fafc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;white-space:pre-wrap}
   .ck-selbox{width:20px;height:20px;border-radius:50%;border:1.5px solid #c9d3de;display:inline-flex;align-items:center;justify-content:center;font-size:12px;color:#fff;flex:0 0 auto;vertical-align:middle}
   .ck-selbox.on{background:var(--blue);border-color:var(--blue)}
   .ck-q .ck-selbox{margin-right:8px}
@@ -311,6 +312,11 @@
       <button class="btn small block" id="btnPhotoAlbum">🖼 从相册导入</button>
     </div>
     <div class="hint" id="photoHint">点“＋”或“拍照”调相机；点照片上的 × 删除。</div>
+  </div>
+
+  <div class="section hidden" id="ckQSection">
+    <h3 id="ckQTitle">检查内容</h3>
+    <div class="ck-qtext" id="ckQText"></div>
   </div>
 
   <div id="editFields">
@@ -473,7 +479,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.5.1';
+  var WEB_VERSION = '2.5.2';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -780,12 +786,15 @@
       var thumb = ph.length ? photoUrl(ph[0].thumb) : '';
       var check = state.selecting
         ? '<div class="check">' + (state.selected[h.id] ? '✓' : '') + '</div>' : '';
+      var hasCkText = !!(h.tag && h.tag.type === 'checklist' && h.tag.text);
+      var descShown = h.desc || (hasCkText ? h.tag.text : '（未填写，点这里补充）');
+      var descEmpty = !h.desc && !hasCkText;
       el.innerHTML = check +
         '<div class="thumb" style="' + (thumb ? "background-image:url('" + thumb + "')" : '') + '">' +
           (thumb ? '' : '<div class="nophoto">无照片</div>') +
         '</div>' +
         '<div class="info">' +
-          '<div class="desc' + (h.desc ? '' : ' empty') + '">' + C.escapeHtml(h.desc || '（未填写，点这里补充）') + '</div>' +
+          '<div class="desc' + (descEmpty ? ' empty' : '') + '">' + C.escapeHtml(descShown) + '</div>' +
           '<div class="meta">' +
             '<span class="chip">' + (idx + 1) + '</span>' +
             '<span class="chip ' + (h.level === '重大' ? 'warn' : '') + '">' + C.escapeHtml(h.level || '一般') + '</span>' +
@@ -889,6 +898,21 @@
     $('photoHint').textContent = list.length + ' / 6 张 · 横拍 4:3 最合适，竖拍在文书里会左右留白';
   }
 
+  var DESC_PH = '例：压榨房遥控器缺少保护套，易造成误操作和损坏。\n可点输入法上的麦克风直接用语音输入。';
+
+  function updateCkBlock(h) {
+    var isCk = !!(h && h.tag && h.tag.type === 'checklist');
+    $('ckQSection').classList.toggle('hidden', !isCk);
+    if (isCk) {
+      $('ckQTitle').textContent = '检查内容（189 条 · 第 ' + h.tag.no + ' 条' +
+        (h.tag.group ? ' · ' + h.tag.group : '') + '）';
+      $('ckQText').textContent = h.tag.text || '';
+      $('inDesc').placeholder = '';
+    } else {
+      $('inDesc').placeholder = DESC_PH;
+    }
+  }
+
   function fillEditForm(h) {
     $('inDesc').value = h.desc || '';
     $('inMeasure').value = h.measure || '';
@@ -927,6 +951,7 @@
       b.classList.toggle('on', b.dataset.phase === 'before');
     });
     fillEditForm(h);
+    updateCkBlock(h);
     updatePhaseUI();
     renderPhotos();
     showView('edit');
@@ -947,6 +972,7 @@
     $('editSub').textContent = (batch.meta.short_unit || batch.meta.unit || '') + ' · ' + batch.meta.check_date;
     $('phaseTabs').classList.add('hidden');
     fillEditForm(h);
+    updateCkBlock(h);
     updatePhaseUI();
     renderPhotos();
     showView('edit');
@@ -994,10 +1020,10 @@
     var hid = nextHazardId(batch);
     var h = {
       id: hid, seq: batch.hazards.length + 1,
-      desc: item.text.slice(0, 120),
+      desc: '',
       measure: '', location: gname, level: '一般', responsible: '',
       created: C.isoNow(),
-      tag: { type: 'checklist', no: item.no, group: gname }
+      tag: { type: 'checklist', no: item.no, group: gname, text: item.text }
     };
     batch.hazards.push(h);
     var a = ckAnswers();
