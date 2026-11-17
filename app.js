@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '3.0.0';
+  var WEB_VERSION = '3.1.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -303,6 +303,9 @@
     document.querySelector('.fabbar').classList.toggle('hidden', state.selecting);
     var cst = ckStats();
     $('ckEntrySub').textContent = '已检 ' + cst.done + '/' + cst.total + ' · 不符合 ' + cst.ng;
+    if (!isChecklistBatch(state.batch) && cst.done === 0) {
+      $('ckEntrySub').textContent = '清单化检查 · 未开始';
+    }
     $('ckEntryBar').style.width = (cst.total ? Math.round(cst.done / cst.total * 100) : 0) + '%';
     batch.hazards.forEach(function (h, idx) {
       var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
@@ -990,12 +993,23 @@
     return { date: date, time: time };
   }
 
+  // 清单化检查：kind 显式标记，兼容旧数据（有清单答案的也算）
+  function isChecklistBatch(b) {
+    if (!b) return false;
+    if (b.kind === 'checklist') return true;
+    if (b.kind === 'photo') return false;
+    var a = (b.checklist && b.checklist.answers) || {};
+    return Object.keys(a).length > 0;
+  }
+
   async function openMenu(mode, manage) {
     var isAdd = mode === 'add';
     histMode = isAdd && !!manage;
-    var batches = await dbAll('batches');
-    batches.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
+    var allBatches = await dbAll('batches');
+    allBatches.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
+    var batches = allBatches.filter(function (b) { return !isChecklistBatch(b); });
     var cur = state.batch;
+    var curIsList = isChecklistBatch(cur);
     var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
     var when = batchWhen(cur);
     var meta = [(cur.meta.name || '').trim(), when.date, when.time, cur.hazards.length + ' 条隐患', C.formatBytes(bytes)]
@@ -1043,11 +1057,14 @@
           svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
           '<div class="sh-grid">' +
           '<div class="sh-tile" id="mSettings">' + svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#1f4e79') + '<span>本次检查信息</span></div>' +
-          '<div class="sh-tile" id="mNewList">' + svgIcon('<path d="M9 5h9a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h3z"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>', 18, '#1f4e79') + '<span>新建清单</span></div>' +
+          '<div class="sh-tile" id="mNewList">' + svgIcon('<path d="M9 5h9a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h3z"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>', 18, '#1f4e79') + '<span>清单化检查</span></div>' +
           '</div>') +
         '<div class="sh-sec"><span>历史检查</span><span>' +
         (histMode ? '已选 ' + selected + ' 条' : '共 ' + batches.length + ' 次') + '</span></div>' +
-        (hist || '<div class="sh-hist"><span class="d">暂无检查</span></div>') +
+        (curIsList ? '<div class="sh-hist on" style="opacity:.9"><span class="dot"></span>' +
+          '<span class="d">当前：清单化检查<span>' + C.escapeHtml(when.date) + ' ' + C.escapeHtml(when.time) + '</span></span>' +
+          '<span class="badge">当前</span></div>' : '') +
+        (hist || '<div class="sh-hist"><span class="d">' + (curIsList ? '还没有普通检查' : '暂无检查') + '</span></div>') +
         (histMode
           ? '<div class="cm-actions"><div class="btn ghost" id="mAll">全选</div>' +
             '<div class="btn primary' + (selected ? '' : ' disabled') + '" id="mDel">删除（' + selected + '）</div>' +
@@ -1203,6 +1220,7 @@
 
   async function newCheck() {
     var b = newBatchMeta(state.cfg || {});
+    b.kind = 'photo';
     await dbPut('batches', b);
     state.batch = b;
     state.photos = [];
@@ -1453,7 +1471,7 @@
 
   async function openChecklistManager(manage) {
     ckMgrMode = !!manage;
-    var all = await dbAll('batches');
+    var all = (await dbAll('batches')).filter(isChecklistBatch);
     all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
     var selN = Object.keys(ckMgrSel).length;
     var rows = all.map(function (b) {
@@ -1480,7 +1498,7 @@
     }).join('');
     openSheet(
       '<div class="sh-grab"></div>' +
-      '<div class="sh-hd"><div><div class="tt">' + (ckMgrMode ? '管理清单' : '检查清单') + '</div>' +
+      '<div class="sh-hd"><div><div class="tt">' + (ckMgrMode ? '管理清单化检查' : '清单化检查') + '</div>' +
       '<div class="mt">' + (ckMgrMode ? '删除会连同该检查的隐患与照片；当前清单不能删'
         : '共 ' + all.length + ' 份，点一条打开清单') + '</div></div>' +
       '<button class="sh-x" id="mClClose">' +
@@ -1489,9 +1507,9 @@
       (ckMgrMode ? '' :
         '<div class="sh-primary" id="mClNew">' +
         '<span class="ib">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 20, '#ffffff') + '</span>' +
-        '<span class="pt"><span class="t">新建清单</span><span class="s">空白或复制上次清单</span></span>' +
+        '<span class="pt"><span class="t">新建清单化检查</span><span class="s">空白，或复制上次清单</span></span>' +
         svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>') +
-      '<div class="sh-sec"><span>历史清单</span><span>' + (ckMgrMode ? '已选 ' + selN + ' 份' : '共 ' + all.length + ' 份') + '</span></div>' +
+      '<div class="sh-sec"><span>历史清单化检查</span><span>' + (ckMgrMode ? '已选 ' + selN + ' 份' : '共 ' + all.length + ' 份') + '</span></div>' +
       (rows || '<div class="sh-hist"><span class="d">暂无</span></div>') +
       (ckMgrMode
         ? '<div class="cm-actions"><div class="btn ghost" id="mClAll">全选</div>' +
@@ -1584,7 +1602,7 @@
   }
 
   async function openNewChecklistSheet() {
-    var all = await dbAll('batches');
+    var all = (await dbAll('batches')).filter(isChecklistBatch);
     all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
     var src = null, srcN = 0;
     for (var i = 0; i < all.length; i++) {
@@ -1618,10 +1636,12 @@
   async function newChecklist(mode) {
     closeSheet();
     var b = newBatchMeta(state.cfg || {});
+    b.kind = 'checklist';
     if (mode === 'copy') {
       var all = await dbAll('batches');
       all.sort(function (x, y) { return (y.created || '').localeCompare(x.created || ''); });
       for (var i = 0; i < all.length; i++) {
+        if (!isChecklistBatch(all[i])) continue;
         var ans = copyChecklistAnswers(all[i]);
         if (Object.keys(ans).length) {
           b.checklist = { answers: ans, copied_from: all[i].id };
@@ -1780,7 +1800,10 @@
         toast('导出失败：' + (e.message || e));
       });
     });
-    $('ckEntry').addEventListener('click', openChecklist);
+    $('ckEntry').addEventListener('click', function () {
+      if (isChecklistBatch(state.batch)) openChecklist();
+      else openChecklistManager(false);
+    });
     $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
       var b = e.target.closest('button');
