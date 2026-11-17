@@ -479,7 +479,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.5.3';
+  var WEB_VERSION = '2.5.4';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -703,6 +703,7 @@
   }
 
   async function addPhotos(files) {
+    if (!state.editing) { toast('请先打开一条隐患再添加照片'); return; }
     var ed = state.editing;
     var existing = photosOf(ed.hazardId, ed.phase);
     var have = existing.length;
@@ -942,6 +943,7 @@
     var h = hazardById(hazardId);
     if (!h) return;
     pendingQuick = false;
+    pendingCk = null;
     state.editing = { hazardId: hazardId, phase: 'before' };
     var idx = state.batch.hazards.indexOf(h) + 1;
     $('editTitle').textContent = '隐患 ' + idx;
@@ -960,6 +962,7 @@
   async function startNew() {
     var batch = state.batch;
     pendingQuick = false;
+    pendingCk = null;
     var id = nextHazardId(batch);
     var h = {
       id: id, seq: batch.hazards.length + 1, desc: '', measure: '', location: '',
@@ -1184,6 +1187,7 @@
 
   // ---------------- 保存 ----------------
   function readForm() {
+    if (!state.editing) return null;
     var h = hazardById(state.editing.hazardId);
     if (!h) return null;
     h.desc = $('inDesc').value.trim();
@@ -1196,6 +1200,7 @@
   }
 
   async function saveEdit(next) {
+    if (!state.editing) { toast('这条隐患已不在编辑状态，请重新打开'); showView('home'); return; }
     var after = !!(state.editing && state.editing.phase === 'after');
     var h = after ? hazardById(state.editing.hazardId) : readForm();
     if (!h) return;
@@ -2368,6 +2373,7 @@
 
     $('btnNew').addEventListener('click', quickCapture);
     $('btnBack').addEventListener('click', function () {
+      if (!state.editing) { showView('home'); return; }
       var after = !!(state.editing && state.editing.phase === 'after');
       if (!after) readForm();
       saveBatch().then(function () {
@@ -2405,6 +2411,7 @@
 
     Array.prototype.forEach.call($('phaseTabs').children, function (b) {
       b.addEventListener('click', function () {
+        if (!state.editing) return;
         var prev = state.editing.phase;
         if (prev === 'before' && b.dataset.phase === 'after') {
           readForm();
@@ -2426,7 +2433,7 @@
     cam.addEventListener('change', function () {
       var files = Array.prototype.slice.call(cam.files || []);
       cam.value = '';
-      if (!files.length) { pendingQuick = false; return; }
+      if (!files.length) { pendingQuick = false; pendingCk = null; return; }
       if (pendingCk) {
         var ckId = pendingCk;
         pendingCk = null;
