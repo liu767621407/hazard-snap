@@ -479,7 +479,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '2.5.2';
+  var WEB_VERSION = '2.5.3';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, setupMode: 'edit', setupDraft: null
@@ -1057,7 +1057,7 @@
   async function ckPhotoDataUrl(rec) {
     try {
       var bmp = await createImageBitmap(rec.blob);
-      var max = 900;
+      var max = 720;
       var scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
       var w = Math.max(1, Math.round(bmp.width * scale));
       var h = Math.max(1, Math.round(bmp.height * scale));
@@ -1096,8 +1096,12 @@
           var imgHtml = '';
           if (urls.length) {
             var wcm = urls.length === 1 ? 5.6 : (urls.length === 2 ? 3.2 : 2.2);
-            imgHtml = '<div class="phs">' + urls.map(function (u) {
-              return '<img src="' + u + '" style="width:' + wcm + 'cm">';
+            var wpx = Math.round(wcm * 37.795);
+            var hpx = Math.round(wpx * 0.75);
+            imgHtml = '<div class="phs">' + urls.map(function (u, ui) {
+              return (ui ? '&nbsp;&nbsp;' : '') +
+                '<img src="' + u + '" width="' + wpx + '" height="' + hpx +
+                '" style="width:' + wcm + 'cm;height:' + (Math.round(wcm * 75) / 100) + 'cm">';
             }).join('') + '</div>';
           }
           var cell = imgHtml + (note ? '<div class="note">' + C.escapeHtml(note) + '</div>' : '');
