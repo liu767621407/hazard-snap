@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '3.1.1';
+  var WEB_VERSION = '3.2.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -465,7 +465,6 @@
     var after = !!(state.editing && state.editing.phase === 'after');
     $('editFields').classList.toggle('hidden', after);
     $('afterHint').classList.toggle('hidden', !after);
-    $('btnSaveNext').classList.toggle('hidden', after);
   }
 
   function openEdit(hazardId) {
@@ -728,30 +727,48 @@
     return h;
   }
 
-  async function saveEdit(next) {
-    if (!state.editing) { toast('这条隐患已不在编辑状态，请重新打开'); showView('home'); return; }
-    var after = !!(state.editing && state.editing.phase === 'after');
-    var h = after ? hazardById(state.editing.hazardId) : readForm();
+  // ---------- 自动保存 ----------
+  var autoTimer = null, savedTimer = null;
+
+  async function saveEditing(opts) {
+    if (!state.editing) return;
+    var after = state.editing.phase === 'after';
+    if (!after) readForm();
+    var h = hazardById(state.editing.hazardId);
     if (!h) return;
-    var photos = photosOf(h.id).length;
-    if (!after && !h.desc && !photos && !h.measure && !h.location && !h.responsible) {
-      // 什么都没有的条目直接丢弃
-      state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
-      await saveBatch();
-      toast('已放弃空白条目');
-      showView('home');
-      return;
+    if (opts && opts.dropEmpty && !after) {
+      var photos = photosOf(h.id).length;
+      if (!h.desc && !photos && !h.measure && !h.location && !h.responsible) {
+        state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
+        await saveBatch();
+        return;
+      }
     }
     await saveBatch();
-    backTo = null;
-    if (next && !after) {
-      // 保存后继续给“当前这条隐患”加照片，不新建隐患
-      toast('已保存，继续给这条拍照');
-      $('fileCamera').click();
-    } else {
-      showView('home');
-      toast(after ? '整改后照片已保存' : '已保存');
+  }
+
+  async function autoSaveNow() {
+    clearTimeout(autoTimer);
+    if (!state.editing) return;
+    try {
+      await saveEditing({ dropEmpty: false });
+    } catch (e) {
+      console.error(e);
+      return;
     }
+    var el = $('autoSaveHint');
+    if (!el) return;
+    var d = new Date();
+    el.textContent = '已自动保存 ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+    el.classList.add('show');
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(function () { el.classList.remove('show'); }, 1500);
+  }
+
+  function scheduleAutoSave() {
+    if (!state.editing) return;
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(autoSaveNow, 700);
   }
 
   // ---------------- 导出 ----------------
@@ -1891,21 +1908,14 @@
     })();
 
     $('btnNew').addEventListener('click', quickCapture);
-    $('btnBack').addEventListener('click', function () {
+    $('btnBack').addEventListener('click', async function () {
       if (!state.editing) { showView('home'); return; }
-      var after = !!(state.editing && state.editing.phase === 'after');
-      if (!after) readForm();
-      saveBatch().then(function () {
-        // 空条目丢弃
-        var h = hazardById(state.editing.hazardId);
-        if (h && !h.desc && !photosOf(h.id).length) {
-          state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== h.id; });
-          return saveBatch();
-        }
-      }).then(function () { showView('home'); });
+      clearTimeout(autoTimer);
+      await saveEditing({ dropEmpty: true });
+      state.editing = null;
+      backTo = null;
+      showView('home');
     });
-    $('btnSaveBack').addEventListener('click', function () { saveEdit(false); });
-    $('btnSaveNext').addEventListener('click', function () { saveEdit(true); });
     $('btnSetBack').addEventListener('click', goUp);
     $('btnSaveCfg').addEventListener('click', saveSetup);
     $('btnManage').addEventListener('click', function () { setSelecting(true); });
@@ -1925,16 +1935,29 @@
       b.addEventListener('click', function () {
         Array.prototype.forEach.call($('segLevel').children, function (x) { x.classList.remove('on'); });
         b.classList.add('on');
+        scheduleAutoSave();
       });
     });
 
+    ['inDesc', 'inMeasure', 'inLocation', 'inResp'].forEach(function (id) {
+      var el = $(id);
+      if (el) el.addEventListener('input', scheduleAutoSave);
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden' && state.editing) {
+        clearTimeout(autoTimer);
+        saveEditing({ dropEmpty: false }).catch(function (e) { console.error(e); });
+      }
+    });
+
     Array.prototype.forEach.call($('phaseTabs').children, function (b) {
-      b.addEventListener('click', function () {
+      b.addEventListener('click', async function () {
         if (!state.editing) return;
         var prev = state.editing.phase;
         if (prev === 'before' && b.dataset.phase === 'after') {
-          readForm();
-          saveBatch();
+          clearTimeout(autoTimer);
+          await saveEditing({ dropEmpty: false });
+          if (!state.editing) return;
         }
         Array.prototype.forEach.call($('phaseTabs').children, function (x) { x.classList.remove('on'); });
         b.classList.add('on');

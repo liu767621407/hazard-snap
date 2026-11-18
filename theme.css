@@ -163,3 +163,9 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 
 /* Toast / loading */
 .toast{border-radius:14px;background:rgba(19,32,44,.92);font-size:13.5px;box-shadow:0 8px 24px rgba(10,20,32,.25)}
+.autosave{
+  position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(6px);
+  background:rgba(19,32,44,.82);color:#fff;font-size:12px;padding:7px 14px;border-radius:999px;
+  opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:30;backdrop-filter:blur(4px)
+}
+.autosave.show{opacity:1;transform:translateX(-50%) translateY(0)}
