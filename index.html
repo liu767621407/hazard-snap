@@ -41,7 +41,7 @@
     <div class="sub"><span id="hdrUnit">未设置单位</span> · <span id="hdrDate">—</span></div>
   </div>
   <div class="hdr-actions">
-    <button class="iconbtn" id="btnAdd" aria-label="新建或切换检查">＋</button>
+    <button class="iconbtn" id="btnChecks" aria-label="检查列表">☰</button>
     <button class="iconbtn" id="btnMenu" aria-label="更多">⋯</button>
   </div>
 </header>
@@ -76,6 +76,32 @@
 <div class="fabbar">
   <button class="btn primary block" id="btnNew">📷 拍照</button>
 </div>
+
+<!-- 检查列表 -->
+<section id="viewChecks" class="hidden">
+  <header>
+    <button class="iconbtn" id="btnChecksBack" aria-label="返回">←</button>
+    <div class="titles"><h1>检查</h1><div class="sub" id="checksSub">全部检查</div></div>
+    <div class="hdr-actions">
+      <button class="txtbtn" id="btnChecksManage">管理</button>
+    </div>
+  </header>
+  <div class="ck-tabs" id="checksTabs">
+    <button data-f="all" class="on">全部</button>
+    <button data-f="photo">现场</button>
+    <button data-f="checklist">清单</button>
+  </div>
+  <div id="checksList" style="padding:4px 14px 120px"></div>
+  <div class="selbar hidden" id="checkSelBar">
+    <button class="btn small" id="btnCheckSelAll">全选</button>
+    <span id="checkSelCount">已选 0 条</span>
+    <button class="btn small danger" id="btnCheckSelDelete">删除</button>
+    <button class="btn small" id="btnCheckSelDone">取消</button>
+  </div>
+  <div class="fabbar">
+    <button class="btn primary block" id="btnChecksNew">＋ 新建检查</button>
+  </div>
+</section>
 
 <!-- 编辑页 -->
 <section id="viewEdit" class="hidden">
@@ -137,6 +163,11 @@
   </div>
   </div>
 
+  <div class="editbar">
+    <button class="btn ghost danger-text" id="btnDeleteHazard">删除这条</button>
+    <button class="btn primary" id="btnDone">完成</button>
+  </div>
+  <div class="savehint">内容会在返回或点「完成」时自动保存</div>
 </section>
 
 <!-- 新建检查 / 本次检查信息 -->
@@ -234,8 +265,9 @@
     <button class="iconbtn" id="btnCkBack" aria-label="返回">←</button>
     <div class="titles"><h1>检查清单</h1><div class="sub" id="ckSub"></div></div>
     <div class="ck-hd-btns">
-      <button id="btnCkNew" style="border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13.5px;padding:8px 10px;border-radius:10px">新建</button>
-      <button id="btnCkExport" style="border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13.5px;padding:8px 10px;border-radius:10px">导出</button>
+      <button id="btnCkBatch" class="ckhbtn">批量</button>
+      <button id="btnCkNew" class="ckhbtn">新建</button>
+      <button id="btnCkExport" class="ckhbtn">导出</button>
     </div>
   </header>
   <div class="ck-sum">
@@ -247,12 +279,11 @@
     <button data-f="all" class="on">全部</button>
     <button data-f="todo">未检</button>
     <button data-f="ng">不符合</button>
-    <button id="ckAllSel" class="ck-allsel">全选</button>
   </div>
   <div id="ckList" class="ck-list"></div>
   <div class="ck-bulk hidden" id="ckBulk">
-    <span>已选 <b id="ckBulkN">0</b> 项</span>
-    <button class="btn primary" id="ckBulkOk">标记合格</button>
+    <button class="btn ghost" id="ckBulkAll">全选</button>
+    <button class="btn primary" id="ckBulkOk">标为合格（<b id="ckBulkN">0</b>）</button>
     <button class="btn ghost" id="ckBulkClear">取消</button>
   </div>
 </section>
@@ -262,6 +293,7 @@
 </div>
 
 <div id="toast" class="toast"></div>
+<div id="snackbar" class="snackbar hidden"><span id="snackText"></span><button id="snackBtn"></button></div>
 <div id="loading" class="loading hidden">处理中…</div>
 
 <script src="core.js"></script>

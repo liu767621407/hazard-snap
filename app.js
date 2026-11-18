@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '3.3.0';
+  var WEB_VERSION = '4.0.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -16,6 +16,9 @@
   var checkSel = {};
   var histMode = false;
   var backTo = null;
+  var chkFilter = 'all';
+  var chkSel = {};
+  var chkManage = false;
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -298,6 +301,7 @@
     var batch = state.batch;
     list.innerHTML = '';
     $('emptyHome').classList.toggle('hidden', batch.hazards.length > 0);
+    $('ckEntryWrap').classList.toggle('hidden', !isChecklistBatch(batch));
     $('selBar').classList.toggle('hidden', !state.selecting);
     $('btnManage').classList.toggle('hidden', state.selecting);
     document.querySelector('.fabbar').classList.toggle('hidden', state.selecting);
@@ -387,18 +391,33 @@
     var ids = selectedIds();
     if (!ids.length) return;
     if (!confirm('删除选中的 ' + ids.length + ' 条隐患及其照片？')) return;
+    var removedH = [];
+    var removedP = [];
     var keep = [];
-    for (var i = 0; i < state.batch.hazards.length; i++) {
-      var h = state.batch.hazards[i];
-      if (selectedIds().indexOf(h.id) < 0) { keep.push(h); continue; }
-      var recs = photosOf(h.id);
-      for (var j = 0; j < recs.length; j++) { await dbDel('photos', recs[j].key); }
-      state.photos = state.photos.filter(function (p) { return p.hazardId !== h.id; });
-    }
+    state.batch.hazards.forEach(function (h) {
+      if (ids.indexOf(h.id) < 0) { keep.push(h); return; }
+      removedH.push(h);
+      state.photos.forEach(function (p) { if (p.hazardId === h.id) removedP.push(p); });
+    });
     state.batch.hazards = keep;
+    var dead = {};
+    removedP.forEach(function (p) { dead[p.hazardId] = true; });
+    state.photos = state.photos.filter(function (p) { return !dead[p.hazardId]; });
     await saveBatch();
     setSelecting(false);
-    toast('已删除 ' + ids.length + ' 条');
+    renderHome();
+    var timer = setTimeout(function () {
+      removedP.forEach(function (p) { dbDel('photos', p.key); });
+    }, 6500);
+    snackbar('已删除 ' + removedH.length + ' 条隐患', '撤销', async function () {
+      clearTimeout(timer);
+      Array.prototype.push.apply(state.batch.hazards, removedH);
+      state.batch.hazards.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
+      state.photos = state.photos.concat(removedP);
+      for (var k = 0; k < removedP.length; k++) await dbPut('photos', removedP[k]);
+      await saveBatch();
+      renderHome();
+    });
   }
 
   function renderPhotos() {
@@ -467,11 +486,12 @@
     $('afterHint').classList.toggle('hidden', !after);
   }
 
-  function openEdit(hazardId) {
+  function openEdit(hazardId, fromChecklist) {
     var h = hazardById(hazardId);
     if (!h) return;
     pendingQuick = false;
     pendingCk = null;
+    state.editFrom = fromChecklist ? 'checklist' : '';
     state.editing = { hazardId: hazardId, phase: 'before' };
     var idx = state.batch.hazards.indexOf(h) + 1;
     $('editTitle').textContent = '隐患 ' + idx;
@@ -534,8 +554,8 @@
     } finally {
       state.editing = null;
     }
-    showView('home');
-    toast('照片已存，点这一条补描述即可');
+    openEdit(id, false);
+    toast('照片已存，补个描述吧');
   }
 
   // 清单项拍照 → 生成带“189条”标签的隐患随手拍记录
@@ -569,6 +589,7 @@
     }
     await saveBatch();
     renderChecklist();
+    openEdit(hid, true);
     toast('已生成隐患记录（189·' + item.no + '）');
   }
 
@@ -696,6 +717,7 @@
     $('viewSettings').classList.toggle('hidden', name !== 'settings');
     $('viewExport').classList.toggle('hidden', name !== 'export');
     $('viewChecklist').classList.toggle('hidden', name !== 'checklist');
+    $('viewChecks').classList.toggle('hidden', name !== 'checks');
     $('topbar').classList.toggle('hidden', name !== 'home');
     document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home' || state.selecting);
     // Chrome/PWA：用 history 让系统返回键回到上一级（APK 里走 SnapBack，不重复记历史）
@@ -703,6 +725,7 @@
       try { history.pushState({ snapView: name }, ''); } catch (e) {}
     }
     if (name === 'home') renderHome();
+    if (name === 'checks') renderChecks();
   }
 
   // Chrome/PWA 的返回键
@@ -728,6 +751,16 @@
   }
 
   // ---------- 离开编辑页时保存 ----------
+  async function completeEditing(goto) {
+    if (!state.editing) { showView('home'); return; }
+    var from = state.editFrom;
+    await saveEditing({ dropEmpty: true });
+    state.editing = null;
+    state.editFrom = '';
+    if (goto === 'checklist' || (from === 'checklist' && isChecklistBatch(state.batch))) openChecklist();
+    else showView('home');
+  }
+
   async function saveEditing(opts) {
     if (!state.editing) return;
     var after = state.editing.phase === 'after';
@@ -745,8 +778,55 @@
     await saveBatch();
   }
 
+  var snackTimer = null;
 
-  // ---------------- 导出 ----------------
+  function snackbar(msg, action, fn) {
+    var bar = $('snackbar');
+    $('snackText').textContent = msg;
+    $('snackBtn').textContent = action || '';
+    $('snackBtn').classList.toggle('hidden', !action);
+    bar.classList.remove('hidden');
+    clearTimeout(snackTimer);
+    snackTimer = setTimeout(function () { bar.classList.add('hidden'); }, 6000);
+    $('snackBtn').onclick = function () {
+      bar.classList.add('hidden');
+      clearTimeout(snackTimer);
+      if (fn) fn();
+    };
+  }
+
+  async function deleteHazardWithUndo(id) {
+    var h = hazardById(id);
+    if (!h) return;
+    var photos = state.photos.filter(function (p) { return p.hazardId === id; });
+    state.batch.hazards = state.batch.hazards.filter(function (x) { return x.id !== id; });
+    state.photos = state.photos.filter(function (p) { return p.hazardId !== id; });
+    await saveBatch();
+    renderHome();
+    var timer = setTimeout(function () {
+      photos.forEach(function (p) { dbDel('photos', p.key); });
+    }, 6500);
+    snackbar('已删除 1 条隐患', '撤销', async function () {
+      clearTimeout(timer);
+      state.batch.hazards.push(h);
+      state.batch.hazards.sort(function (a, b) { return (a.seq || 0) - (b.seq || 0); });
+      state.photos = state.photos.concat(photos);
+      for (var i = 0; i < photos.length; i++) await dbPut('photos', photos[i]);
+      await saveBatch();
+      renderHome();
+    });
+  }
+
+  async function deleteCurrentHazard() {
+    if (!state.editing) return;
+    var id = state.editing.hazardId;
+    if (!confirm('删除这条隐患？6 秒内可以撤销。')) return;
+    state.editing = null;
+    state.editFrom = '';
+    showView('home');
+    await deleteHazardWithUndo(id);
+  }
+
   async function buildZip() {
     var batch = state.batch;
     var photos = await dbIndex('photos', 'byBatch', batch.id);
@@ -1258,8 +1338,124 @@
     state.batch = b;
     state.photos = [];
     showView('home');
-    openSetup();
+    openSetup({ title: '新建现场检查', sub: '拍照记录隐患' });
     toast('已新建检查，填好信息就可以拍照');
+  }
+
+  // ---------------- 检查列表 ----------------
+  async function openChecks() {
+    chkManage = false;
+    chkSel = {};
+    showView('checks');
+  }
+
+  function checkProgressText(b) {
+    if (isChecklistBatch(b)) {
+      var st = ckListStats(b);
+      return '清单 ' + st.done + '/' + st.total + (st.ng ? ' · 不符合 ' + st.ng : '');
+    }
+    return b.hazards.length + ' 条隐患';
+  }
+
+  async function renderChecks() {
+    var all = await dbAll('batches');
+    all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
+    var list = all.filter(function (b) {
+      if (chkFilter === 'photo') return !isChecklistBatch(b);
+      if (chkFilter === 'checklist') return isChecklistBatch(b);
+      return true;
+    });
+    $('checksSub').textContent = '共 ' + all.length + ' 个检查';
+    Array.prototype.forEach.call($('checksTabs').children, function (b) {
+      b.classList.toggle('on', b.dataset.f === chkFilter);
+    });
+    $('checksList').innerHTML = list.length ? list.map(function (b) {
+      var w = batchWhen(b);
+      var nm = (b.meta.name || '').trim() || (w.date + (w.time ? ' ' + w.time : ''));
+      var on = b.id === state.batch.id;
+      var sel = !!chkSel[b.id];
+      return '<div class="chk-row' + (on ? ' on' : '') + (sel ? ' sel' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
+        (chkManage ? '<span class="chk-cb' + (sel ? ' on' : '') + '">' + (sel ? '✓' : '') + '</span>' : '') +
+        '<div class="chk-main"><div class="chk-t">' + C.escapeHtml(nm) +
+        (isChecklistBatch(b) ? '<span class="type-badge list">清单</span>' : '<span class="type-badge">现场</span>') +
+        (on ? '<span class="type-badge">当前</span>' : '') + '</div>' +
+        '<div class="chk-s">' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') +
+        ' · ' + C.escapeHtml(checkProgressText(b)) + '</div></div>' +
+        '<span class="chev">›</span></div>';
+    }).join('') : '<div class="ck-empty">还没有检查<br>点下面「新建检查」开始</div>';
+    $('btnChecksManage').textContent = chkManage ? '取消' : '管理';
+    $('checkSelBar').classList.toggle('hidden', !chkManage);
+    $('checkSelCount').textContent = '已选 ' + Object.keys(chkSel).length + ' 条';
+    var fab = document.querySelector('#viewChecks .fabbar');
+    if (fab) fab.classList.toggle('hidden', chkManage);
+    Array.prototype.forEach.call($('checksList').querySelectorAll('.chk-row'), function (r) {
+      r.onclick = function () {
+        var id = r.dataset.id;
+        if (chkManage) {
+          if (id === state.batch.id) return;
+          if (chkSel[id]) delete chkSel[id]; else chkSel[id] = true;
+          renderChecks();
+          return;
+        }
+        switchCheck(id);
+      };
+    });
+  }
+
+  async function switchCheck(id) {
+    if (id === state.batch.id) { showView('home'); return; }
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    state.batch = b;
+    state.photos = [];
+    await refreshPhotos();
+    showView('home');
+    toast('已切换到 ' + ((b.meta.name || '').trim() || b.meta.check_date));
+  }
+
+  async function createCheck(kind) {
+    var b = newBatchMeta(state.cfg || {});
+    b.kind = kind === 'checklist' ? 'checklist' : 'photo';
+    await dbPut('batches', b);
+    state.batch = b;
+    state.photos = [];
+    openSetup({
+      title: b.kind === 'checklist' ? '新建清单检查' : '新建现场检查',
+      sub: b.kind === 'checklist' ? '189 条清单，逐项检查' : '拍照记录隐患'
+    });
+  }
+
+  async function deleteChecks() {
+    var ids = Object.keys(chkSel).filter(function (id) { return id !== state.batch.id; });
+    if (!ids.length) { toast('请选择要删除的检查'); return; }
+    if (!confirm('删除 ' + ids.length + ' 个检查？其中的隐患和照片会一起删除，不能恢复。')) return;
+    for (var i = 0; i < ids.length; i++) {
+      var ps = await dbIndex('photos', 'byBatch', ids[i]);
+      for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
+      await dbDel('batches', ids[i]);
+    }
+    chkSel = {};
+    toast('已删除 ' + ids.length + ' 个检查');
+    renderChecks();
+  }
+
+  function openNewCheckSheet() {
+    openSheet(
+      '<div class="sh-grab"></div>' +
+      '<div class="sh-hd"><div><div class="tt">新建检查</div><div class="mt">先选一种检查方式</div></div>' +
+      '<button class="sh-x" id="mNewClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
+      '<div class="sh-primary" id="mNewPhoto">' +
+      '<span class="ib">' + svgIcon('<path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/>', 20, '#fff') + '</span>' +
+      '<span class="pt"><span class="t">现场检查</span><span class="s">拍照记录隐患，逐条写描述</span></span>' +
+      svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
+      '<div class="sh-grid"><div class="sh-tile" id="mNewList">' +
+      svgIcon('<path d="M9 5h9a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h3z"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>', 18, '#1f4e79') +
+      '<span>清单检查<br><small style="color:#8a97a6">189 条逐项检查</small></span></div></div>' +
+      '<div class="sh-foot">随时可在检查列表切换</div>'
+    );
+    $('mNewClose').onclick = closeSheet;
+    $('mNewPhoto').onclick = function () { closeSheet(); createCheck('photo'); };
+    $('mNewList').onclick = function () { closeSheet(); createCheck('checklist'); };
   }
 
   // 单击只选中（留在面板），双击才进随手拍
@@ -1334,10 +1530,11 @@
     $('cfgDeadlineHint').textContent = '整改期限：' + SnapDocx._internal.fmtCN(d) + '前';
   }
 
-  function openSetup() {
+  function openSetup(opts) {
+    opts = opts || {};
     var meta = state.batch.meta;
-    $('setupTitle').textContent = '本次检查信息';
-    $('setupSub').textContent = '写进通知单的表头和落款';
+    $('setupTitle').textContent = opts.title || '检查信息';
+    $('setupSub').textContent = opts.sub || '写进通知单的表头和落款';
     $('btnSaveCfg').textContent = '保存';
     $('btnSetBack').style.visibility = 'visible';
 
@@ -1457,7 +1654,7 @@
   })();
   var CK_FLAT = [];
   CK_GROUPS.forEach(function (g) { g.items.forEach(function (it) { CK_FLAT.push(it); }); });
-  var ckMeta = { open: {}, filter: 'all' };
+  var ckMeta = { view: 'groups', gi: -1, filter: 'all', openItem: {}, batch: false };
   var ckSel = {};
   var ckMgrMode = false;
   var ckMgrSel = {};
@@ -1486,6 +1683,8 @@
 
   function openChecklist() {
     ckMeta.filter = 'all';
+    ckMeta.view = 'groups';
+    ckMeta.batch = false;
     ckSel = {};
     if ($('ckSearch')) $('ckSearch').value = '';
     renderChecklist();
@@ -1704,8 +1903,57 @@
     return ckHazardCount(it.no) > 0 || note.trim() !== '';
   }
 
-  function renderChecklist() {
+  function ckGroupStats(gi) {
     var a = ckAnswers();
+    var g = CK_GROUPS[gi];
+    var done = 0, ng = 0;
+    g.items.forEach(function (it) {
+      var r = a[it.id] && a[it.id].r;
+      if (r) done++;
+      if (r === 'ng') ng++;
+    });
+    return { done: done, ng: ng, total: g.items.length };
+  }
+
+  function ckVisibleItems(gi) {
+    var a = ckAnswers();
+    var q = ($('ckSearch').value || '').trim();
+    var g = CK_GROUPS[gi];
+    return g.items.filter(function (it) {
+      var r = a[it.id] && a[it.id].r;
+      if (ckMeta.filter === 'todo' && r) return false;
+      if (ckMeta.filter === 'ng' && r !== 'ng') return false;
+      if (q) {
+        var note = (a[it.id] && a[it.id].note) || '';
+        if ((g.name + ' ' + it.text + ' ' + note).indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function ckItemHtml(it) {
+    var a = ckAnswers();
+    var r = (a[it.id] && a[it.id].r) || '';
+    var note = (a[it.id] && a[it.id].note) || '';
+    var nimg = ckHazardCount(it.no);
+    var locked = ckLocked(it);
+    var sel = !!ckSel[it.id];
+    var open = !!ckMeta.openItem[it.id];
+    var detail = '<div class="ck-detail' + (open ? '' : ' hidden') + '">' +
+      '<textarea class="ck-note" data-note="' + it.id + '" placeholder="问题描述（选填）">' + C.escapeHtml(note) + '</textarea>' +
+      '<div class="ck-dfoot"><button class="btn small" data-photo="' + it.id + '">📷 拍照</button>' +
+      (nimg ? '<span>已拍 ' + nimg + ' 张</span>' : '') +
+      (locked ? '<span class="ck-lock">已记录问题</span>' : '') + '</div></div>';
+    return '<div class="ck-item' + (sel ? ' sel' : '') + '" data-id="' + it.id + '">' +
+      (ckMeta.batch ? '<span class="ck-cb">' + (sel ? '✓' : '') + '</span>' : '') +
+      '<div class="ck-q" data-open="' + it.id + '"><b>' + it.no + '</b> ' + C.escapeHtml(it.text) + '</div>' +
+      '<div class="ck-acts">' +
+      '<button class="cbtn ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok" data-id="' + it.id + '">✓</button>' +
+      '<button class="cbtn ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng" data-id="' + it.id + '">✗</button>' +
+      '</div>' + detail + '</div>';
+  }
+
+  function renderChecklist() {
     var st = ckStats();
     var q = ($('ckSearch').value || '').trim();
     CK_FLAT.forEach(function (it) { if (ckSel[it.id] && ckLocked(it)) delete ckSel[it.id]; });
@@ -1716,84 +1964,80 @@
     Array.prototype.forEach.call($('ckTabs').children, function (b) {
       b.classList.toggle('on', b.dataset.f === ckMeta.filter);
     });
+    $('viewChecklist').classList.toggle('ck-group-view', ckMeta.view === 'group');
+    $('btnCkBatch').textContent = ckMeta.batch ? '完成' : '批量';
+
+    var showFlat = ckMeta.batch || ckMeta.filter !== 'all' || !!q;
     var html = '';
-    CK_GROUPS.forEach(function (g, gi) {
-      var items = g.items.filter(function (it) {
-        var r = a[it.id] && a[it.id].r;
-        if (ckMeta.filter === 'todo' && r) return false;
-        if (ckMeta.filter === 'ng' && r !== 'ng') return false;
-        if (q) {
-          var note = (a[it.id] && a[it.id].note) || '';
-          if ((g.name + ' ' + it.text + ' ' + note).indexOf(q) < 0) return false;
-        }
-        return true;
-      });
-      if (!items.length) return;
-      var done = 0, ng = 0;
-      g.items.forEach(function (it) {
-        var r = a[it.id] && a[it.id].r;
-        if (r) done++;
-        if (r === 'ng') ng++;
-      });
-      var open = ckMeta.filter !== 'all' || !!q || ckMeta.open[gi];
-      var unlocked = items.filter(function (it) { return !ckLocked(it); });
-      var allSel = unlocked.length && unlocked.every(function (it) { return ckSel[it.id]; });
-      html += '<div class="ck-group' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
-        '<div class="ck-head">' +
-        '<span class="ck-selbox' + (allSel ? ' on' : '') + '" data-gsel="' + gi + '">' + (allSel ? '✓' : '') + '</span>' +
-        '<span class="nm">' + C.escapeHtml(g.name) + '</span>' +
-        '<span class="meta">' + done + '/' + g.items.length + (ng ? ' · 不符合 ' + ng : '') + '</span>' +
-        '<span class="chev">›</span></div>' +
-        '<div class="ck-body">' + items.map(function (it) {
-          var r = (a[it.id] && a[it.id].r) || '';
-          var note = (a[it.id] && a[it.id].note) || '';
-          var nimg = ckHazardCount(it.no);
-          var locked = ckLocked(it);
-          var sel = !!ckSel[it.id] && !locked;
-          return '<div class="ck-item" data-id="' + it.id + '">' +
-            '<div class="ck-q"><span class="ck-selbox' + (sel ? ' on' : '') + (locked ? ' lock' : '') + '"' +
-            (locked ? ' title="已有照片或问题描述，不能批量标合格"' : ' data-isel="' + it.id + '"') + '>' +
-            (sel ? '✓' : '') + '</span>' +
-            '<b>' + it.no + '</b>' + C.escapeHtml(it.text) + '</div>' +
-            '<div class="ck-act"><button class="ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok">合格</button>' +
-            '<button class="ng' + (r === 'ng' ? ' on' : '') + '" data-r="ng">不符合</button>' +
-            '<button class="ph" data-photo="1">📷' + (nimg ? '<i>' + nimg + '</i>' : '') + '</button></div>' +
-            (r === 'ng' ? '<textarea class="ck-note" placeholder="问题描述（选填）">' + C.escapeHtml(note) + '</textarea>' : '') +
-            '</div>';
-        }).join('') + '</div></div>';
+
+    if (ckMeta.view === 'group') {
+      var g = CK_GROUPS[ckMeta.gi] || CK_GROUPS[0];
+      var gs = ckGroupStats(ckMeta.gi);
+      var items = ckVisibleItems(ckMeta.gi);
+      html = '<button class="ck-gback" id="ckGBack">‹ 全部区域</button>' +
+        '<div class="ck-ghead"><b>' + C.escapeHtml(g.name) + '</b><span>' + gs.done + '/' + gs.total +
+        (gs.ng ? ' · 不符合 ' + gs.ng : '') + '</span></div>' +
+        '<div class="ck-items">' +
+        (items.length ? items.map(ckItemHtml).join('') : '<div class="ck-empty">没有符合条件的检查项</div>') + '</div>';
+    } else if (showFlat) {
+      var flat = CK_GROUPS.map(function (g2, gi) {
+        var its = ckVisibleItems(gi);
+        if (!its.length) return '';
+        return '<div class="ck-glabel">' + C.escapeHtml(g2.name) + '</div>' + its.map(ckItemHtml).join('');
+      }).join('');
+      html = '<div class="ck-items">' + (flat || '<div class="ck-empty">没有符合条件的检查项</div>') + '</div>';
+    } else {
+      html = CK_GROUPS.map(function (g2, gi) {
+        var s = ckGroupStats(gi);
+        return '<button class="ck-gcard" data-g="' + gi + '"><span class="nm">' + C.escapeHtml(g2.name) + '</span>' +
+          '<span class="meta">' + s.done + '/' + s.total + (s.ng ? ' · 不符合 ' + s.ng : '') + '</span>' +
+          '<span class="chev">›</span></button>';
+      }).join('');
+    }
+
+    $('ckList').innerHTML = html;
+    var gb = $('ckGBack');
+    if (gb) gb.onclick = function () { ckMeta.view = 'groups'; ckMeta.batch = false; ckSel = {}; renderChecklist(); };
+    Array.prototype.forEach.call($('ckList').querySelectorAll('.ck-gcard'), function (b) {
+      b.onclick = function () {
+        ckMeta.view = 'group';
+        ckMeta.gi = Number(b.dataset.g);
+        ckMeta.batch = false;
+        ckSel = {};
+        renderChecklist();
+      };
     });
-    $('ckList').innerHTML = html || '<div class="ck-empty">没有符合条件的检查项</div>';
     var selN = Object.keys(ckSel).length;
-    $('ckBulk').classList.toggle('hidden', !selN);
+    $('ckBulk').classList.toggle('hidden', !ckMeta.batch);
     $('ckBulkN').textContent = selN;
-    var allUnlocked = CK_FLAT.filter(function (it) { return !ckLocked(it); });
-    var allSelAll = allUnlocked.length && allUnlocked.every(function (it) { return ckSel[it.id]; });
-    $('ckAllSel').textContent = allSelAll ? '取消全选' : '全选';
+    $('ckBulkOk').classList.toggle('disabled', !selN);
   }
 
-  function toggleAllCk() {
-    var unlocked = CK_FLAT.filter(function (it) { return !ckLocked(it); });
+  function ckSetResult(id, r) {
+    var a = ckAnswers();
+    var it = null;
+    CK_FLAT.forEach(function (x) { if (x.id === id) it = x; });
+    if (!it) return;
+    var cur = a[id] || { r: '', note: '' };
+    cur.r = (cur.r === r) ? '' : r;
+    a[id] = cur;
+    ckSave();
+    renderChecklist();
+  }
+
+  function ckSelectAllVisible() {
+    var ids = [];
+    if (ckMeta.view === 'group') {
+      ckVisibleItems(ckMeta.gi).forEach(function (it) { ids.push(it); });
+    } else {
+      CK_GROUPS.forEach(function (g, gi) {
+        ckVisibleItems(gi).forEach(function (it) { ids.push(it); });
+      });
+    }
+    var unlocked = ids.filter(function (it) { return !ckLocked(it); });
     var all = unlocked.length && unlocked.every(function (it) { return ckSel[it.id]; });
     ckSel = {};
     if (!all) unlocked.forEach(function (it) { ckSel[it.id] = true; });
-    renderChecklist();
-  }
-
-  function toggleCkSel(id) {
-    if (ckSel[id]) delete ckSel[id];
-    else ckSel[id] = true;
-    renderChecklist();
-  }
-
-  function toggleGroupSel(gi) {
-    var g = CK_GROUPS[gi];
-    if (!g) return;
-    var unlocked = g.items.filter(function (it) { return !ckLocked(it); });
-    var all = unlocked.length && unlocked.every(function (it) { return ckSel[it.id]; });
-    unlocked.forEach(function (it) {
-      if (all) delete ckSel[it.id];
-      else ckSel[it.id] = true;
-    });
     renderChecklist();
   }
 
@@ -1816,6 +2060,7 @@
       a[id].r = 'ok';
     });
     ckSel = {};
+    ckMeta.batch = false;
     ckSave();
     renderChecklist();
     toast('已把 ' + ids.length + ' 项标为合格' + (skipped ? '，' + skipped + ' 项已有照片/描述已跳过' : ''));
@@ -1824,9 +2069,13 @@
   // ---------------- 事件绑定 ----------------
   function bind() {
     $('btnMenu').addEventListener('click', function () { openMenu('detail'); });
-    $('btnAdd').addEventListener('click', function () { openMenu('add'); });
     $('btnCkBack').addEventListener('click', goUp);
-    $('btnCkNew').addEventListener('click', function () { openChecklistManager(false); });
+    $('btnCkBatch').addEventListener('click', function () {
+      ckMeta.batch = !ckMeta.batch;
+      if (!ckMeta.batch) ckSel = {};
+      renderChecklist();
+    });
+    $('btnCkNew').addEventListener('click', function () { openNewChecklistSheet(); });
     $('btnCkExport').addEventListener('click', function () {
       exportChecklistRecord().catch(function (e) {
         console.error(e);
@@ -1835,59 +2084,58 @@
     });
     $('ckEntry').addEventListener('click', function () {
       if (isChecklistBatch(state.batch)) openChecklist();
-      else openChecklistManager(false);
+      else toast('这次是现场检查；要逐项检查请到「检查」里新建清单检查');
     });
     $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
       var b = e.target.closest('button');
-      if (!b || b.id === 'ckAllSel') return;
+      if (!b) return;
       ckMeta.filter = b.dataset.f;
       renderChecklist();
     });
-    $('ckAllSel').addEventListener('click', toggleAllCk);
     $('ckList').addEventListener('click', function (e) {
-      var sb = e.target.closest('.ck-selbox');
-      if (sb) {
-        if (sb.dataset.isel) { toggleCkSel(sb.dataset.isel); return; }
-        if (sb.dataset.gsel !== undefined) { toggleGroupSel(+sb.dataset.gsel); return; }
-      }
-      var head = e.target.closest('.ck-head');
-      if (head) {
-        var gi = +head.parentNode.dataset.g;
-        ckMeta.open[gi] = !ckMeta.open[gi];
-        head.parentNode.classList.toggle('open', !!ckMeta.open[gi]);
-        return;
-      }
-      var ph = e.target.closest('.ck-act .ph');
-      if (ph) {
-        var phItem = ph.closest('.ck-item');
-        pendingCk = phItem.dataset.id;
+      var rb = e.target.closest('[data-r]');
+      if (rb) { ckSetResult(rb.dataset.id, rb.dataset.r); return; }
+      var pb = e.target.closest('[data-photo]');
+      if (pb) {
+        pendingCk = pb.dataset.photo;
         $('fileCamera').click();
         return;
       }
-      var btn = e.target.closest('.ck-act button');
-      if (!btn) return;
-      var item = btn.closest('.ck-item');
-      var id = item.dataset.id;
-      var a = ckAnswers();
-      var cur = a[id] || { r: '', note: '' };
-      var r = btn.dataset.r;
-      cur.r = (cur.r === r) ? '' : r;
-      a[id] = cur;
-      ckSave();
+      var qb = e.target.closest('[data-open]');
+      if (qb) {
+        var id = qb.dataset.open;
+        if (ckMeta.batch) {
+          if (ckSel[id]) delete ckSel[id]; else ckSel[id] = true;
+          renderChecklist();
+          return;
+        }
+        ckMeta.openItem[id] = !ckMeta.openItem[id];
+        renderChecklist();
+        return;
+      }
+      var row = e.target.closest('.ck-item');
+      if (row && ckMeta.batch && !e.target.closest('.ck-detail')) {
+        var rid = row.dataset.id;
+        if (ckSel[rid]) delete ckSel[rid]; else ckSel[rid] = true;
+        renderChecklist();
+      }
+    });
+    $('ckBulkAll').addEventListener('click', ckSelectAllVisible);
+    $('ckBulkOk').addEventListener('click', bulkMarkOk);
+    $('ckBulkClear').addEventListener('click', function () {
+      ckMeta.batch = false;
+      ckSel = {};
       renderChecklist();
     });
-    $('ckBulkOk').addEventListener('click', bulkMarkOk);
-    $('ckBulkClear').addEventListener('click', function () { ckSel = {}; renderChecklist(); });
     $('ckList').addEventListener('change', function (e) {
       if (!e.target.classList.contains('ck-note')) return;
-      var item = e.target.closest('.ck-item');
+      var id = e.target.dataset.note;
       var a = ckAnswers();
-      var id = item.dataset.id;
       if (!a[id]) a[id] = { r: 'ng', note: '' };
       a[id].note = e.target.value;
+      if (a[id].note.trim() && !a[id].r) a[id].r = 'ng';
       ckSave();
-      renderChecklist();
     });
     $('mask').addEventListener('click', function (e) { if (e.target === $('mask')) closeSheet(); });
 
@@ -1923,13 +2171,39 @@
     })();
 
     $('btnNew').addEventListener('click', quickCapture);
-    $('btnBack').addEventListener('click', async function () {
-      if (!state.editing) { showView('home'); return; }
-      await saveEditing({ dropEmpty: true });
-      state.editing = null;
-      backTo = null;
-      showView('home');
+    $('btnChecks').addEventListener('click', openChecks);
+    $('btnChecksBack').addEventListener('click', function () { showView('home'); });
+    $('btnChecksManage').addEventListener('click', function () {
+      chkManage = !chkManage;
+      if (!chkManage) chkSel = {};
+      renderChecks();
     });
+    $('btnChecksNew').addEventListener('click', openNewCheckSheet);
+    $('btnCheckSelAll').addEventListener('click', function () {
+      var on = Object.keys(chkSel).length > 0;
+      chkSel = {};
+      if (!on) {
+        Array.prototype.forEach.call($('checksList').querySelectorAll('.chk-row'), function (r) {
+          if (r.dataset.id !== state.batch.id) chkSel[r.dataset.id] = true;
+        });
+      }
+      renderChecks();
+    });
+    $('btnCheckSelDelete').addEventListener('click', deleteChecks);
+    $('btnCheckSelDone').addEventListener('click', function () {
+      chkManage = false;
+      chkSel = {};
+      renderChecks();
+    });
+    Array.prototype.forEach.call($('checksTabs').children, function (b) {
+      b.addEventListener('click', function () {
+        chkFilter = b.dataset.f;
+        renderChecks();
+      });
+    });
+    $('btnBack').addEventListener('click', function () { completeEditing(); });
+    $('btnDone').addEventListener('click', function () { completeEditing(); });
+    $('btnDeleteHazard').addEventListener('click', deleteCurrentHazard);
     $('btnSetBack').addEventListener('click', goUp);
     $('btnSaveCfg').addEventListener('click', saveSetup);
     $('btnManage').addEventListener('click', function () { setSelecting(true); });
@@ -2034,7 +2308,7 @@
       }
       var view = document.body.dataset.view;
       if (view === 'edit') { $('btnBack').click(); return true; }
-      if (view === 'export' || view === 'settings' || view === 'checklist') { goUp(); return true; }
+      if (view === 'export' || view === 'settings' || view === 'checklist' || view === 'checks') { goUp(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
     } catch (e) { console.warn('SnapBack', e); }
     return false;
