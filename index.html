@@ -194,25 +194,38 @@
   <div class="section">
     <h3>整改通知单</h3>
     <div class="exportrow">
+      <input type="checkbox" class="exp-cb" value="notice" checked aria-label="选择通知单">
       <div class="ico">📄</div>
-      <div class="txt"><b>Word 版（.docx）</b><small>可编辑、可打印，电脑端同版式</small></div>
+      <div class="txt"><b>整改通知单（Word）</b><small>可编辑、可打印，电脑端同版式</small></div>
       <button class="btn primary" id="btnExportDocx">生成</button>
     </div>
     <div class="exportrow">
+      <input type="checkbox" class="exp-cb" value="stub" checked aria-label="选择存根">
+      <div class="ico">🧾</div>
+      <div class="txt"><b>整改通知单存根（Word）</b><small>检查单位留存，含签收栏与“注”</small></div>
+      <button class="btn primary" id="btnExportStub">生成</button>
+    </div>
+    <div class="exportrow">
+      <input type="checkbox" class="exp-cb" value="pdf" checked aria-label="选择 PDF">
       <div class="ico">📕</div>
-      <div class="txt"><b>PDF 版（.pdf）</b><small>直接发对方/打印，不用装 Word</small></div>
+      <div class="txt"><b>整改通知单（PDF）</b><small>直接发对方/打印，不用装 Word</small></div>
       <button class="btn primary" id="btnExportPdf">生成</button>
     </div>
   </div>
   <div class="section">
     <h3>数据包（给电脑端）</h3>
     <div class="exportrow">
+      <input type="checkbox" class="exp-cb" value="zip" aria-label="选择数据包">
       <div class="ico">📦</div>
       <div class="txt"><b>数据包（.zip）</b><small>电脑端“工具 → 导入随手拍包”用</small></div>
       <button class="btn" id="btnExportZip">生成</button>
     </div>
   </div>
-  <p class="hint" style="margin:12px">生成后弹出系统分享面板：选微信 → 文件传输助手/好友，或“保存到文件”。</p>
+  <p class="hint" style="margin:12px 20px 110px">勾选多个后点底部“导出所选”，会打成一个 zip 分享；只选一个则直接生成该文件。</p>
+  <div class="expbar">
+    <label class="exp-all"><input type="checkbox" id="expAll" checked> 全选</label>
+    <button class="btn primary" id="btnExportSel">导出所选（4）</button>
+  </div>
 </section>
 
 <!-- 清单化检查（189 条） -->

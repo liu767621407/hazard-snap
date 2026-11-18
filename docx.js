@@ -76,9 +76,10 @@
     x += '<w:jc w:val="' + (o.align || 'left') + '"/>';
     x += '<w:spacing w:before="' + tw(o.before || 0) + '" w:after="' + tw(o.after || 0) +
       '" w:line="' + lineTw(o.line || 1) + '" w:lineRule="auto"/>';
-    if (o.left || o.hanging) {
+    if (o.left || o.hanging || o.firstLine) {
       x += '<w:ind' + (o.left ? ' w:left="' + tw(o.left) + '"' : '') +
-        (o.hanging ? ' w:hanging="' + tw(o.hanging) + '"' : '') + '/>';
+        (o.hanging ? ' w:hanging="' + tw(o.hanging) + '"' : '') +
+        (o.firstLine ? ' w:firstLine="' + tw(o.firstLine) + '"' : '') + '/>';
     }
     if (o.tabs && o.tabs.length) {
       x += '<w:tabs>' + o.tabs.map(function (pos) {
@@ -470,10 +471,100 @@
     return buildPackage(built.body, built.title, media);
   }
 
+  // ---------------- 存根 ----------------
+  var STUB_GRID = [130.0, 110.0, 130.0, 111.9];
+
+  function stubTitle(meta) {
+    return noticeTitle(meta) + '（存根）';
+  }
+
+  function stubFileName(meta) {
+    return stubTitle(meta) + '.docx';
+  }
+
+  function buildStubBody(payload) {
+    payload = payload || {};
+    var meta = payload.meta || {};
+    var hazards = (payload.hazards || []).filter(function (h) { return String(h.desc || '').trim(); });
+    var title = stubTitle(meta);
+
+    var check = parseDate(meta.check_date);
+    var deadline = meta.deadline ? parseDate(meta.deadline)
+      : addDays(check || new Date(), meta.deadline_days || 7);
+    var isSpecial = (meta.check_type || '').indexOf('专项') >= 0;
+    var report = isSpecial
+      ? '《' + (meta.special_name || '专项检查') + '整改销号表》'
+      : '《隐患整改反馈（验收）单》';
+    var narrative = '经' + (fmtCN(check) || '＿＿＿＿年＿＿月＿＿日') +
+      '安全生产现场检查，你单位存在下列问题，限于' +
+      (fmtCN(deadline) || '＿＿＿＿年＿＿月＿＿日') +
+      '前整改完毕。整改完成后 3 日内，将' + report + '及整改前后照片报' +
+      (meta.issue_unit || '检查单位') + '核验销号。';
+
+    var c = '';
+    c += para(run((meta.unit || '＿＿＿＿＿＿＿＿＿＿') + '：', { size: 14, bold: true }),
+      { line: 1.3, after: 8 });
+    c += para(run(narrative, { size: 13 }),
+      { align: 'both', line: 1.55, firstLine: 26, after: 6 });
+
+    c += para(run('存在问题：', { font: FONT_LABEL, size: 13 }), { line: 1.3, before: 2, after: 3 });
+    if (hazards.length) {
+      hazards.forEach(function (h, i) {
+        c += para(run((i + 1) + '. ' + String(h.desc).replace(/\r?\n/g, '；'), { size: 13 }),
+          { align: 'both', line: 1.45, after: 3, left: 24, hanging: 24 });
+      });
+    } else {
+      for (var k = 0; k < 2; k++) c += para(run('', { size: 13 }), { line: 1.45, after: 3 });
+    }
+
+    var blocks2 = blocks(hazards, meta.requirement);
+    c += para(run('整改要求：', { font: FONT_LABEL, size: 13 }), { line: 1.3, before: 6, after: 3 });
+    if (blocks2.length) {
+      var no = 0;
+      blocks2.forEach(function (b) {
+        if (b.kind === 'gap') { c += para(run('', { size: 6 }), { line: 1, after: 0 }); return; }
+        var text = b.kind === 'item' ? (++no) + '. ' + b.text : b.text;
+        c += para(run(text, { size: 13 }), { align: 'both', line: 1.45, after: 3, left: 24, hanging: 24 });
+      });
+    } else {
+      for (var k2 = 0; k2 < 2; k2++) c += para(run('', { size: 13 }), { line: 1.45, after: 3 });
+    }
+
+    var body = para(run(title, { font: FONT_TITLE, size: 18, spacing: 1.2 }),
+      { align: 'center', line: 1, after: 6, keepNext: true });
+    body += table([CONTENT_W],
+      row(cell(c, { width: CONTENT_W, mt: 10, mb: 8, ml: 11, mr: 11 }), 545), 10, 6);
+
+    // 签收栏
+    var signP = function (text) {
+      return para(run(text, { size: 10.5 }), { align: 'center', line: 1.1 });
+    };
+    var r1 = cell(signP('检查人（签字）'), { width: STUB_GRID[0], mt: 4, mb: 4, ml: 4, mr: 4, valign: 'center' }) +
+      cell(signP(''), { width: STUB_GRID[1], mt: 4, mb: 4, ml: 4, mr: 4, valign: 'center' }) +
+      cell(signP('受查单位负责人（签字）'), { width: STUB_GRID[2], mt: 4, mb: 4, ml: 4, mr: 4, valign: 'center' }) +
+      cell(signP(''), { width: STUB_GRID[3], mt: 4, mb: 4, ml: 4, mr: 4, valign: 'center' });
+    var r2 = cell(signP('送达日期'), { width: STUB_GRID[0] + STUB_GRID[1], span: 2, mt: 4, mb: 4, ml: 4, mr: 4, valign: 'center' }) +
+      cell(signP(fmtCN(check)), { width: STUB_GRID[2] + STUB_GRID[3], span: 2, mt: 4, mb: 4, ml: 4, mr: 4, valign: 'center' });
+    body += table(STUB_GRID, row(r1, 32) + row(r2, 32), 8, 6);
+
+    body += para(run('注：本存根由检查单位留存，保存期限不少于 3 年。',
+      { font: FONT_SONG, size: 8.5, color: '595959' }), { line: 1.3, before: 5, after: 0 });
+
+    return { body: body, title: title };
+  }
+
+  function buildStub(payload) {
+    var built = buildStubBody(payload);
+    return buildPackage(built.body, built.title, []);
+  }
+
   global.SnapDocx = {
     buildNotice: buildNotice,
+    buildStub: buildStub,
     noticeTitle: noticeTitle,
     noticeFileName: noticeFileName,
+    stubTitle: stubTitle,
+    stubFileName: stubFileName,
     _internal: { blocks: blocks, fmtCN: fmtCN, parseDate: parseDate, addDays: addDays }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

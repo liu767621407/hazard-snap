@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '3.2.1';
+  var WEB_VERSION = '3.3.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -845,20 +845,110 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
   }
 
-  async function exportBatch() {
-    if (!state.batch.hazards.length) { toast('还没有隐患可导出'); return; }
-    setLoading(true, '正在打包…');
+  var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  function expGuard(needDesc) {
+    if (!state.batch.hazards.length) { toast('还没有隐患可导出'); return false; }
+    if (!needDesc) return true;
+    var n = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); }).length;
+    if (!n) { toast('还没有写描述的隐患，无法生成通知单'); return false; }
+    if (!(state.batch.meta.unit || '').trim()) {
+      toast('请先填写受查单位');
+      backTo = 'export';
+      openSetup();
+      return false;
+    }
+    return confirmNoDesc();
+  }
+
+  async function makeNotice() {
+    var payload = await buildNoticePayload();
+    return { name: window.SnapDocx.noticeFileName(payload.meta), bytes: window.SnapDocx.buildNotice(payload), mime: DOCX_MIME };
+  }
+
+  async function makeStub() {
+    var payload = await buildNoticePayload();
+    return { name: window.SnapDocx.stubFileName(payload.meta), bytes: window.SnapDocx.buildStub(payload), mime: DOCX_MIME };
+  }
+
+  async function makePdf() {
+    var payload = await buildNoticePayload();
+    return {
+      name: window.SnapDocx.noticeFileName(payload.meta).replace(/\.docx$/i, '.pdf'),
+      bytes: await window.SnapPdf.buildNoticePdf(payload),
+      mime: 'application/pdf'
+    };
+  }
+
+  async function makeData() {
+    var out = await buildZip();
+    var short = C.safeName(state.batch.meta.short_unit || state.batch.meta.unit || '随手拍');
+    var name = '随手拍_' + (state.batch.meta.check_date || '').replace(/-/g, '') + '_' + short + '.zip';
+    var blob = new Blob(out.parts, { type: 'application/zip' });
+    var bytes = new Uint8Array(await blob.arrayBuffer());
+    return { name: name, bytes: bytes, mime: 'application/zip' };
+  }
+
+  var EXP_MAKERS = { notice: makeNotice, stub: makeStub, pdf: makePdf, zip: makeData };
+  var EXP_LABELS = { notice: '通知单', stub: '存根', pdf: 'PDF', zip: '数据包' };
+
+  async function exportOne(kind) {
+    if (!expGuard(kind !== 'zip')) return;
+    setLoading(true, '正在生成' + (EXP_LABELS[kind] || '') + '…');
     try {
-      var out = await buildZip();
-      var short = C.safeName(state.batch.meta.short_unit || state.batch.meta.unit || '随手拍');
-      var fname = '随手拍_' + state.batch.meta.check_date.replace(/-/g, '') + '_' + short + '.zip';
-      var blob = new Blob(out.parts, { type: 'application/zip' });
+      var f = await EXP_MAKERS[kind]();
       setLoading(false);
-      await shareBytes(blob, fname, 'application/zip');
+      await shareBytes(f.bytes, f.name, f.mime);
       markExported();
-      toast('已导出 ' + fname + '（' + C.formatBytes(blob.size) + '）');
+      toast('已生成 ' + f.name);
     } catch (e) {
       setLoading(false);
+      console.error(e);
+      toast('生成失败：' + (e.message || e));
+    }
+  }
+
+  function exportSelectedKinds() {
+    return Array.prototype.slice.call(document.querySelectorAll('.exp-cb'))
+      .filter(function (c) { return c.checked; })
+      .map(function (c) { return c.value; });
+  }
+
+  function updateExportSel() {
+    var all = Array.prototype.slice.call(document.querySelectorAll('.exp-cb'));
+    var ks = all.filter(function (c) { return c.checked; });
+    var btn = $('btnExportSel');
+    if (btn) {
+      btn.textContent = '导出所选（' + ks.length + '）';
+      btn.classList.toggle('disabled', !ks.length);
+    }
+    var ea = $('expAll');
+    if (ea) ea.checked = all.length > 0 && ks.length === all.length;
+  }
+
+  async function exportSelected() {
+    var ks = exportSelectedKinds();
+    if (!ks.length) { toast('请至少勾选一个文件'); return; }
+    if (ks.length === 1) { exportOne(ks[0]); return; }
+    if (!expGuard(ks.some(function (k) { return k !== 'zip'; }))) return;
+    setLoading(true, '正在生成所选文件…');
+    try {
+      var files = [];
+      for (var i = 0; i < ks.length; i++) {
+        var f = await EXP_MAKERS[ks[i]]();
+        files.push({ name: f.name, data: f.bytes });
+      }
+      var parts = C.zipParts(files);
+      var blob = new Blob(parts, { type: 'application/zip' });
+      var short = C.safeName(state.batch.meta.short_unit || state.batch.meta.unit || '随手拍');
+      var name = '整改资料_' + (state.batch.meta.check_date || '').replace(/-/g, '') + '_' + short + '.zip';
+      setLoading(false);
+      await shareBytes(blob, name, 'application/zip');
+      markExported();
+      toast('已打包 ' + files.length + ' 个文件：' + name);
+    } catch (e) {
+      setLoading(false);
+      console.error(e);
       toast('导出失败：' + (e.message || e));
     }
   }
@@ -893,57 +983,6 @@
     return confirm(n + ' 条只有照片、没写描述，不会进通知单。继续导出？');
   }
 
-  async function exportNotice() {
-    var hazards = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
-    if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
-    if (!(state.batch.meta.unit || '').trim()) {
-      toast('请先填写受查单位');
-      backTo = 'export';
-      openSetup();
-      return;
-    }
-    if (!confirmNoDesc()) return;
-    setLoading(true, '正在生成通知单…');
-    try {
-      var payload = await buildNoticePayload();
-      var bytes = window.SnapDocx.buildNotice(payload);
-      var name = window.SnapDocx.noticeFileName(payload.meta);
-      setLoading(false);
-      await shareBytes(bytes, name,
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      toast('已生成 ' + name);
-    } catch (e) {
-      setLoading(false);
-      console.error(e);
-      toast('生成失败：' + (e.message || e));
-    }
-  }
-
-  async function exportPdf() {
-    var hazards = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); });
-    if (!hazards.length) { toast('还没有写描述的隐患，无法生成通知单'); return; }
-    if (!(state.batch.meta.unit || '').trim()) {
-      toast('请先填写受查单位');
-      backTo = 'export';
-      openSetup();
-      return;
-    }
-    if (!confirmNoDesc()) return;
-    setLoading(true, '正在生成 PDF…');
-    try {
-      var payload = await buildNoticePayload();
-      var bytes = await window.SnapPdf.buildNoticePdf(payload);
-      var name = window.SnapDocx.noticeFileName(payload.meta).replace(/\.docx$/i, '.pdf');
-      setLoading(false);
-      await shareBytes(bytes, name, 'application/pdf');
-      toast('已生成 ' + name + '（' + C.formatBytes(bytes.length) + '）');
-    } catch (e) {
-      setLoading(false);
-      console.error(e);
-      toast('PDF 生成失败：' + (e.message || e));
-    }
-  }
-
   function openExport() {
     var n = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); }).length;
     var total = state.batch.hazards.length;
@@ -951,6 +990,7 @@
       ? (n + ' 条隐患 · 生成后可直接发微信/QQ/邮件')
       : (total ? '还没写描述，通知单会是空的' : '还没有隐患');
     showView('export');
+    updateExportSel();
   }
 
   async function markExported() {
@@ -1897,9 +1937,19 @@
     $('btnSelDelete').addEventListener('click', deleteSelected);
     $('btnSelDone').addEventListener('click', function () { setSelecting(false); });
     $('btnExportBack').addEventListener('click', goUp);
-    $('btnExportDocx').addEventListener('click', exportNotice);
-    $('btnExportPdf').addEventListener('click', exportPdf);
-    $('btnExportZip').addEventListener('click', exportBatch);
+    $('btnExportDocx').addEventListener('click', function () { exportOne('notice'); });
+    $('btnExportStub').addEventListener('click', function () { exportOne('stub'); });
+    $('btnExportPdf').addEventListener('click', function () { exportOne('pdf'); });
+    $('btnExportZip').addEventListener('click', function () { exportOne('zip'); });
+    $('btnExportSel').addEventListener('click', exportSelected);
+    $('expAll').addEventListener('change', function () {
+      var on = $('expAll').checked;
+      Array.prototype.forEach.call(document.querySelectorAll('.exp-cb'), function (c) { c.checked = on; });
+      updateExportSel();
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.exp-cb'), function (c) {
+      c.addEventListener('change', updateExportSel);
+    });
     $('btnPhotoCamera').addEventListener('click', function () { $('fileCamera').click(); });
     $('btnPhotoAlbum').addEventListener('click', function () { $('filePick').click(); });
     $('cfgDate').addEventListener('change', updateDeadlineHint);
