@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.1.0';
+  var WEB_VERSION = '4.1.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo'
@@ -1383,8 +1383,7 @@
           : '<div class="entry-state idle"><span>未开始</span></div>') +
         '<div class="entry-acts">' +
         (b
-          ? '<button class="btn primary" data-go="' + m.kind + '">继续</button>' +
-            '<button class="btn ghost" data-new="' + m.kind + '">完成并新建</button>'
+          ? '<button class="btn primary" data-go="' + m.kind + '">继续</button>'
           : '<button class="btn primary" data-new="' + m.kind + '">开始 ' + C.escapeHtml(m.name) + '</button>') +
         '</div></div>';
     }).join('');
