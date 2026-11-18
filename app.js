@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '3.2.0';
+  var WEB_VERSION = '3.2.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -727,9 +727,7 @@
     return h;
   }
 
-  // ---------- 自动保存 ----------
-  var autoTimer = null, savedTimer = null;
-
+  // ---------- 离开编辑页时保存 ----------
   async function saveEditing(opts) {
     if (!state.editing) return;
     var after = state.editing.phase === 'after';
@@ -747,29 +745,6 @@
     await saveBatch();
   }
 
-  async function autoSaveNow() {
-    clearTimeout(autoTimer);
-    if (!state.editing) return;
-    try {
-      await saveEditing({ dropEmpty: false });
-    } catch (e) {
-      console.error(e);
-      return;
-    }
-    var el = $('autoSaveHint');
-    if (!el) return;
-    var d = new Date();
-    el.textContent = '已自动保存 ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
-    el.classList.add('show');
-    clearTimeout(savedTimer);
-    savedTimer = setTimeout(function () { el.classList.remove('show'); }, 1500);
-  }
-
-  function scheduleAutoSave() {
-    if (!state.editing) return;
-    clearTimeout(autoTimer);
-    autoTimer = setTimeout(autoSaveNow, 700);
-  }
 
   // ---------------- 导出 ----------------
   async function buildZip() {
@@ -1910,7 +1885,6 @@
     $('btnNew').addEventListener('click', quickCapture);
     $('btnBack').addEventListener('click', async function () {
       if (!state.editing) { showView('home'); return; }
-      clearTimeout(autoTimer);
       await saveEditing({ dropEmpty: true });
       state.editing = null;
       backTo = null;
@@ -1935,17 +1909,11 @@
       b.addEventListener('click', function () {
         Array.prototype.forEach.call($('segLevel').children, function (x) { x.classList.remove('on'); });
         b.classList.add('on');
-        scheduleAutoSave();
       });
     });
 
-    ['inDesc', 'inMeasure', 'inLocation', 'inResp'].forEach(function (id) {
-      var el = $(id);
-      if (el) el.addEventListener('input', scheduleAutoSave);
-    });
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'hidden' && state.editing) {
-        clearTimeout(autoTimer);
         saveEditing({ dropEmpty: false }).catch(function (e) { console.error(e); });
       }
     });
@@ -1955,7 +1923,6 @@
         if (!state.editing) return;
         var prev = state.editing.phase;
         if (prev === 'before' && b.dataset.phase === 'after') {
-          clearTimeout(autoTimer);
           await saveEditing({ dropEmpty: false });
           if (!state.editing) return;
         }
