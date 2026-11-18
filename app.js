@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.0.0';
+  var WEB_VERSION = '4.0.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}
@@ -1384,6 +1384,7 @@
         '<span class="chev">›</span></div>';
     }).join('') : '<div class="ck-empty">还没有检查<br>点下面「新建检查」开始</div>';
     $('btnChecksManage').textContent = chkManage ? '取消' : '管理';
+    $('btnChecksManage').style.visibility = chkManage ? 'hidden' : 'visible';
     $('checkSelBar').classList.toggle('hidden', !chkManage);
     $('checkSelCount').textContent = '已选 ' + Object.keys(chkSel).length + ' 条';
     var fab = document.querySelector('#viewChecks .fabbar');

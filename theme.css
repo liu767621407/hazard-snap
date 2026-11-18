@@ -170,6 +170,7 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 /* ---------- 4.0 检查列表 / 编辑底栏 / 批量 ---------- */
 .ckhbtn{border:0;background:rgba(255,255,255,.14);color:#fff;font-size:13px;padding:8px 10px;border-radius:10px}
 #viewChecks{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-bottom:110px}
+#checkSelBar{position:sticky;top:0;z-index:6;margin:10px 14px 6px;box-shadow:0 6px 18px rgba(19,32,44,.1)}
 .ck-ghead{display:flex;align-items:baseline;justify-content:space-between;padding:6px 4px 10px;font-size:13px;color:#7C8EA1}
 .ck-ghead b{font-size:17px;color:var(--text)}
 .ck-items{background:#fff;border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-top:4px}
