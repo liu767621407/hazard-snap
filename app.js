@@ -4,21 +4,16 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.0.1';
+  var WEB_VERSION = '4.1.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
-    selecting: false, selected: {}
+    selecting: false, selected: {}, moduleKind: 'photo'
   };
   var pendingQuick = false;
   var pendingCk = null;
-  var lastTap = { id: '', t: 0 };
   var quickTimer = null;
-  var checkSel = {};
-  var histMode = false;
   var backTo = null;
-  var chkFilter = 'all';
-  var chkSel = {};
-  var chkManage = false;
+  var archiveKind = 'photo';
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -289,27 +284,67 @@
 
   function renderHeader() {
     var cfg = state.cfg;
+    var kind = state.batch ? moduleOf(state.batch) : (state.moduleKind || 'photo');
+    $('hdrModule').textContent = moduleName(kind);
     $('hdrUnit').textContent = (state.batch && state.batch.meta.unit) || cfg.unit || '未设置单位';
     var b0 = state.batch;
     var nm = b0 ? (b0.meta.name || '').trim() : '';
     $('hdrDate').textContent = b0 ? ((nm || b0.meta.check_date) + ' · ' + b0.hazards.length + ' 条') : '';
+    if (state.batch && state.batch.meta.check_type) {
+      var spec = state.batch.meta.check_type.indexOf('专项') >= 0;
+      $('hdrModule').textContent = spec
+        ? ('专项检查 · ' + ((state.batch.meta.special_name || '').trim() || '未命名'))
+        : moduleName(kind);
+    }
+  }
+
+  function renderEmptyWorkspace(kind) {
+    var m = MODULE_BY_KIND[kind] || MODULES[0];
+    $('hazardList').innerHTML = '<div class="empty">「' + C.escapeHtml(m.name) + '」还没有进行中的检查<br>' +
+      C.escapeHtml(m.desc) + '</div>';
+    $('emptyHome').classList.add('hidden');
+    $('ckEntryWrap').classList.add('hidden');
+    $('specialWrap').classList.add('hidden');
+    $('selBar').classList.add('hidden');
+    $('btnNew').classList.add('hidden');
+    $('statCount').textContent = '0';
+    $('statPhotos').textContent = '0';
+    $('statSize').textContent = '0 B';
+    $('btnManage').classList.add('hidden');
+    renderHeader();
+    var fab = document.querySelector('#viewHome .fabbar');
+    if (fab) fab.classList.remove('hidden');
+    // 空态时底部按钮变成“新建”
+    var btn = $('btnNew');
+    btn.classList.remove('hidden');
+    btn.textContent = '＋ 新建' + m.name;
+    btn.dataset.action = 'new';
   }
 
   function renderHome() {
     revokeUrls();
     var list = $('hazardList');
     var batch = state.batch;
+    if (!batch) { renderEmptyWorkspace(state.moduleKind || 'photo'); return; }
+    var btn = $('btnNew');
+    btn.dataset.action = 'photo';
+    btn.textContent = '📷 拍照';
     list.innerHTML = '';
     $('emptyHome').classList.toggle('hidden', batch.hazards.length > 0);
-    $('ckEntryWrap').classList.toggle('hidden', !isChecklistBatch(batch));
+    var kind = moduleOf(batch);
+    $('ckEntryWrap').classList.toggle('hidden', kind !== 'checklist');
+    $('specialWrap').classList.toggle('hidden', kind !== 'special');
     $('selBar').classList.toggle('hidden', !state.selecting);
     $('btnManage').classList.toggle('hidden', state.selecting);
-    document.querySelector('.fabbar').classList.toggle('hidden', state.selecting);
+    var fabH = document.querySelector('#viewHome .fabbar');
+    if (fabH) fabH.classList.toggle('hidden', state.selecting);
+    if (kind === 'special') {
+      var sp = batch.meta.special_name || '专项检查';
+      var dl = batch.meta.deadline_days || 7;
+      $('specBar').innerHTML = '<b>' + C.escapeHtml(sp) + '</b><span>整改期限 ' + dl + ' 天 · 出通知单 + 存根 + 销号表</span>';
+    }
     var cst = ckStats();
     $('ckEntrySub').textContent = '已检 ' + cst.done + '/' + cst.total + ' · 不符合 ' + cst.ng;
-    if (!isChecklistBatch(state.batch) && cst.done === 0) {
-      $('ckEntrySub').textContent = '清单化检查 · 未开始';
-    }
     $('ckEntryBar').style.width = (cst.total ? Math.round(cst.done / cst.total * 100) : 0) + '%';
     batch.hazards.forEach(function (h, idx) {
       var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
@@ -507,30 +542,6 @@
     showView('edit');
   }
 
-  async function startNew() {
-    var batch = state.batch;
-    pendingQuick = false;
-    pendingCk = null;
-    var id = nextHazardId(batch);
-    var h = {
-      id: id, seq: batch.hazards.length + 1, desc: '', measure: '', location: '',
-      level: '一般', responsible: '', created: C.isoNow()
-    };
-    batch.hazards.push(h);
-    await saveBatch();
-    state.editing = { hazardId: id, phase: 'before' };
-    $('editTitle').textContent = '新隐患';
-    $('editSub').textContent = (batch.meta.short_unit || batch.meta.unit || '') + ' · ' + batch.meta.check_date;
-    $('phaseTabs').classList.add('hidden');
-    fillEditForm(h);
-    updateCkBlock(h);
-    updatePhaseUI();
-    renderPhotos();
-    showView('edit');
-    setTimeout(function () { $('inDesc').focus(); }, 250);
-  }
-
-  // 首页「📷 拍照」：直接开相机，拍完就存一条（不写描述也能存）
   function quickCapture() {
     if (!state.batch) return;
     pendingQuick = true;
@@ -623,14 +634,12 @@
     }
   }
 
-  async function exportChecklistRecord() {
+  async function makeChecklistDoc() {
     var a = ckAnswers();
     var st = ckStats();
     var m = state.batch.meta;
     var title = (m.name || '').trim() || ('检查清单 ' + (m.check_date || ''));
-    setLoading(true, '正在生成检查清单…');
-    try {
-      var rows = '';
+    var rows = '';
       for (var gi = 0; gi < CK_GROUPS.length; gi++) {
         var g = CK_GROUPS[gi];
         for (var ii = 0; ii < g.items.length; ii++) {
@@ -701,14 +710,10 @@
         '</tr></thead><tbody>' + rows + '</tbody></table>' +
         '<div class="meta">导出时间：' + C.isoNow().replace('T', ' ') + '</div>' +
         '</body></html>';
-      var safe = String(m.short_unit || m.unit || '检查').replace(/[\\/:*?"<>|]/g, '_');
-      var name = '189条清单_' + safe + '_' + (m.check_date || '') + '.doc';
-      var bytes = new TextEncoder().encode('\ufeff' + html);
-      await shareBytes(bytes, name, 'application/msword');
-      toast('已生成 ' + name);
-    } finally {
-      setLoading(false);
-    }
+    var safe = String(m.short_unit || m.unit || '检查').replace(/[\\/:*?"<>|]/g, '_');
+    var name = '189条清单_' + safe + '_' + (m.check_date || '') + '.doc';
+    var bytes = new TextEncoder().encode('\ufeff' + html);
+    return { name: name, bytes: bytes, mime: 'application/msword' };
   }
 
   function showView(name) {
@@ -716,22 +721,25 @@
     $('viewEdit').classList.toggle('hidden', name !== 'edit');
     $('viewSettings').classList.toggle('hidden', name !== 'settings');
     $('viewExport').classList.toggle('hidden', name !== 'export');
+    $('viewEntry').classList.toggle('hidden', name !== 'entry');
+    $('viewArchive').classList.toggle('hidden', name !== 'archive');
     $('viewChecklist').classList.toggle('hidden', name !== 'checklist');
-    $('viewChecks').classList.toggle('hidden', name !== 'checks');
-    $('topbar').classList.toggle('hidden', name !== 'home');
-    document.querySelector('.fabbar').classList.toggle('hidden', name !== 'home' || state.selecting);
+    $('viewHome').classList.toggle('hidden', name !== 'home');
+    var fab = document.querySelector('#viewHome .fabbar');
+    if (fab) fab.classList.toggle('hidden', name !== 'home' || state.selecting);
     // Chrome/PWA：用 history 让系统返回键回到上一级（APK 里走 SnapBack，不重复记历史）
-    if (!window.SnapAndroid && name !== 'home' && state.batch) {
+    if (!window.SnapAndroid && name !== 'entry' && name !== 'home') {
       try { history.pushState({ snapView: name }, ''); } catch (e) {}
     }
     if (name === 'home') renderHome();
-    if (name === 'checks') renderChecks();
+    if (name === 'entry') renderEntry();
+    if (name === 'archive') renderArchive();
   }
 
   // Chrome/PWA 的返回键
   window.addEventListener('popstate', function () {
     var v = document.body.dataset.view;
-    if (v === 'home' || !state.batch) return;
+    if (v === 'entry') return;
     if (v === 'edit') { $('btnBack').click(); return; }
     goUp();
   });
@@ -934,8 +942,7 @@
     if (!n) { toast('还没有写描述的隐患，无法生成通知单'); return false; }
     if (!(state.batch.meta.unit || '').trim()) {
       toast('请先填写受查单位');
-      backTo = 'export';
-      openSetup();
+      openSetup({ title: '检查信息' });
       return false;
     }
     return confirmNoDesc();
@@ -969,11 +976,45 @@
     return { name: name, bytes: bytes, mime: 'application/zip' };
   }
 
-  var EXP_MAKERS = { notice: makeNotice, stub: makeStub, pdf: makePdf, zip: makeData };
-  var EXP_LABELS = { notice: '通知单', stub: '存根', pdf: 'PDF', zip: '数据包' };
+  async function makeChecklistRecord() {
+    return await makeChecklistDoc();
+  }
+
+  var EXP_MAKERS = { notice: makeNotice, stub: makeStub, pdf: makePdf, zip: makeData, cklist: makeChecklistRecord };
+  var EXP_LABELS = { notice: '通知单', stub: '存根', pdf: 'PDF', zip: '数据包', cklist: '清单记录' };
+
+  // 当前模块允许的导出项
+  function expKindsFor(kind) {
+    var base = ['notice', 'stub', 'pdf'];
+    if (kind === 'checklist') base.push('cklist');
+    base.push('zip');
+    return base;
+  }
+
+  function applyExportRows() {
+    var kind = state.batch ? moduleOf(state.batch) : (state.moduleKind || 'photo');
+    var allow = expKindsFor(kind);
+    var sec = $('expCkSection');
+    if (sec) sec.classList.toggle('hidden', allow.indexOf('cklist') < 0);
+    Array.prototype.forEach.call(document.querySelectorAll('.exp-cb'), function (c) {
+      var row = c.closest('.exportrow');
+      var ok = allow.indexOf(c.value) >= 0;
+      if (row) row.classList.toggle('hidden', !ok);
+      if (!ok) c.checked = false;
+    });
+    var st = ckStats();
+    var sub = $('expCkSub');
+    if (sub) {
+      sub.textContent = st.done
+        ? ('已检 ' + st.done + '/' + st.total + ' · 含照片，不符合项红底')
+        : '还没有勾选任何清单项（导出会是全“未检”）';
+    }
+    updateExportSel();
+  }
 
   async function exportOne(kind) {
-    if (!expGuard(kind !== 'zip')) return;
+    if (kind !== 'zip' && kind !== 'cklist' && !expGuard(true)) return;
+    if (kind === 'zip' && !expGuard(false)) return;
     setLoading(true, '正在生成' + (EXP_LABELS[kind] || '') + '…');
     try {
       var f = await EXP_MAKERS[kind]();
@@ -1010,7 +1051,9 @@
     var ks = exportSelectedKinds();
     if (!ks.length) { toast('请至少勾选一个文件'); return; }
     if (ks.length === 1) { exportOne(ks[0]); return; }
-    if (!expGuard(ks.some(function (k) { return k !== 'zip'; }))) return;
+    var needDesc = ks.some(function (k) { return k === 'notice' || k === 'stub' || k === 'pdf'; });
+    if (needDesc && !expGuard(true)) return;
+    if (!needDesc && !expGuard(false)) return;
     setLoading(true, '正在生成所选文件…');
     try {
       var files = [];
@@ -1064,13 +1107,22 @@
   }
 
   function openExport() {
+    if (!state.batch) { toast('请先开始一次检查'); return; }
+    var kind = moduleOf(state.batch);
     var n = state.batch.hazards.filter(function (h) { return (h.desc || '').trim(); }).length;
     var total = state.batch.hazards.length;
-    $('exportSub').textContent = n
-      ? (n + ' 条隐患 · 生成后可直接发微信/QQ/邮件')
-      : (total ? '还没写描述，通知单会是空的' : '还没有隐患');
+    var st = ckStats();
+    var sub;
+    if (kind === 'checklist') {
+      sub = '已检 ' + st.done + '/' + st.total + ' · 可导出清单记录与通知单';
+    } else if (n) {
+      sub = n + ' 条隐患 · 生成后可直接发微信/QQ/邮件';
+    } else {
+      sub = total ? '还没写描述，通知单会是空的' : '还没有隐患';
+    }
+    $('exportSub').textContent = sub;
     showView('export');
-    updateExportSel();
+    applyExportRows();
   }
 
   async function markExported() {
@@ -1105,149 +1157,44 @@
     return { date: date, time: time };
   }
 
-  // 清单化检查：kind 显式标记，兼容旧数据（有清单答案的也算）
-  function isChecklistBatch(b) {
-    if (!b) return false;
-    if (b.kind === 'checklist') return true;
-    if (b.kind === 'photo') return false;
-    var a = (b.checklist && b.checklist.answers) || {};
-    return Object.keys(a).length > 0;
-  }
-
-  async function openMenu(mode, manage) {
-    var isAdd = mode === 'add';
-    histMode = isAdd && !!manage;
-    var allBatches = await dbAll('batches');
-    allBatches.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
-    var batches = allBatches.filter(function (b) { return !isChecklistBatch(b); });
-    var cur = state.batch;
-    var curIsList = isChecklistBatch(cur);
+  // ---------------- 工作台 ⋯ 菜单 ----------------
+  function openModuleMenu() {
+    var b = state.batch;
     var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
-    var when = batchWhen(cur);
-    var meta = [(cur.meta.name || '').trim(), when.date, when.time, cur.hazards.length + ' 条隐患', C.formatBytes(bytes)]
-      .filter(Boolean).join(' · ');
-    var selected = Object.keys(checkSel).length;
-    var hist = batches.map(function (b) {
-      var w = batchWhen(b);
-      var on = b.id === cur.id;
-      var sel = !on && !!checkSel[b.id];
-      var nm = (b.meta.name || '').trim();
-      var label = nm
-        ? C.escapeHtml(nm) + '<span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span>'
-        : C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '');
-      if (histMode) {
-        return '<div class="cm-row' + (on ? ' dis' : '') + (sel ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
-          '<span class="cm-check">' + (sel ? '✓' : '') + '</span>' +
-          '<span class="d">' + label + '</span>' +
-          (on ? '<span class="badge">当前</span>' : '') +
-          '<span class="n">' + b.hazards.length + ' 条</span></div>';
-      }
-      return '<div class="sh-hist' + (on ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
-        '<span class="dot"></span>' +
-        '<span class="d">' + label + '</span>' +
-        (on ? '<span class="badge">当前</span>' : '') +
-        '<span class="n">' + b.hazards.length + ' 条</span></div>';
-    }).join('');
     var appVer = '';
     try {
       if (window.SnapAndroid && window.SnapAndroid.appVersion) appVer = window.SnapAndroid.appVersion();
     } catch (e) {}
-
-    if (isAdd) {
-      openSheet(
-        '<div class="sh-grab"></div>' +
-        '<div class="sh-hd"><div><div class="tt">' + (histMode ? '管理检查' : '新建 / 切换检查') + '</div>' +
-        '<div class="mt">' + (histMode ? '点选要删除的检查；当前检查不能删'
-          : '共 ' + batches.length + ' 次检查，点一条可切换') + '</div></div>' +
-        '<button class="sh-x" id="mClose">' +
-        (histMode ? '<span style="font-size:13px">取消</span>' : svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b')) +
-        '</button></div>' +
-        (histMode ? '' :
-          '<div class="sh-primary" id="mNewBatch">' +
-          '<span class="ib">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 20, '#ffffff') + '</span>' +
-          '<span class="pt"><span class="t">新建检查</span><span class="s">新开一次现场检查</span></span>' +
-          svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
-          '<div class="sh-grid">' +
-          '<div class="sh-tile" id="mSettings">' + svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#1f4e79') + '<span>本次检查信息</span></div>' +
-          '<div class="sh-tile" id="mNewList">' + svgIcon('<path d="M9 5h9a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h3z"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>', 18, '#1f4e79') + '<span>清单化检查</span></div>' +
-          '</div>') +
-        '<div class="sh-sec"><span>历史检查</span><span>' +
-        (histMode ? '已选 ' + selected + ' 条' : '共 ' + batches.length + ' 次') + '</span></div>' +
-        (curIsList ? '<div class="sh-hist on" style="opacity:.9"><span class="dot"></span>' +
-          '<span class="d">当前：清单化检查<span>' + C.escapeHtml(when.date) + ' ' + C.escapeHtml(when.time) + '</span></span>' +
-          '<span class="badge">当前</span></div>' : '') +
-        (hist || '<div class="sh-hist"><span class="d">' + (curIsList ? '还没有普通检查' : '暂无检查') + '</span></div>') +
-        (histMode
-          ? '<div class="cm-actions"><div class="btn ghost" id="mAll">全选</div>' +
-            '<div class="btn primary' + (selected ? '' : ' disabled') + '" id="mDel">删除（' + selected + '）</div>' +
-            '<div class="btn ghost" id="mCancelSel">取消</div></div>'
-          : '') +
-        '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
-      );
-      $('mClose').onclick = function () {
-        if (histMode) { checkSel = {}; openMenu('add', false); return; }
-        checkSel = {};
-        closeSheet();
-      };
-      if (histMode) {
-        $('mAll').onclick = function () { toggleAllChecks(); };
-        $('mDel').onclick = function () { deleteChecked(); };
-        $('mCancelSel').onclick = function () { checkSel = {}; openMenu('add', false); };
-      } else {
-        $('mNewBatch').onclick = function () { closeSheet(); backTo = 'add'; newCheck(); };
-        $('mSettings').onclick = function () { closeSheet(); backTo = 'add'; openSetup(); };
-        $('mNewList').onclick = function () { closeSheet(); openChecklistManager(false); };
-      }
-      Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (b) {
-        var isCur = b.classList.contains('on') || b.classList.contains('dis');
-        if (histMode) {
-          if (!isCur) b.onclick = function () { toggleCheck(b.dataset.batch); };
-          return;
-        }
-        var timer = null, longPressed = false;
-        var start = function () {
-          longPressed = false;
-          clearTimeout(timer);
-          timer = setTimeout(function () {
-            longPressed = true;
-            checkSel = {};
-            if (!isCur) checkSel[b.dataset.batch] = true;
-            openMenu('add', true);
-          }, 480);
-        };
-        var cancel = function () { clearTimeout(timer); };
-        b.addEventListener('touchstart', start, { passive: true });
-        b.addEventListener('touchend', cancel);
-        b.addEventListener('touchmove', cancel, { passive: true });
-        b.addEventListener('mousedown', start);
-        b.addEventListener('mouseup', cancel);
-        b.addEventListener('mouseleave', cancel);
-        b.onclick = function () {
-          if (longPressed) { longPressed = false; return; }
-          var id = b.dataset.batch;
-          var now = Date.now();
-          if (lastTap.id === id && now - lastTap.t < 420) {
-            lastTap = { id: '', t: 0 };
-            closeSheet();
-            showView('home');
-            return;
-          }
-          lastTap = { id: id, t: now };
-          selectBatch(id);
-        };
-      });
-      return;
-    }
-
+    var kind = b ? moduleOf(b) : (state.moduleKind || 'photo');
+    var when = b ? batchWhen(b) : null;
+    var meta = b
+      ? [(b.meta.name || '').trim(), when.date, when.time, b.hazards.length + ' 条隐患', C.formatBytes(bytes)]
+        .filter(Boolean).join(' · ')
+      : moduleName(kind);
+    var hasBatch = !!b;
     openSheet(
       '<div class="sh-grab"></div>' +
-      '<div class="sh-hd"><div><div class="tt">检查详情</div><div class="mt">' + C.escapeHtml(meta) + '</div></div>' +
+      '<div class="sh-hd"><div><div class="tt">' + C.escapeHtml(moduleName(kind)) + '</div>' +
+      '<div class="mt">' + C.escapeHtml(meta) + '</div></div>' +
       '<button class="sh-x" id="mClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
-      '<div class="sh-primary" id="mExport">' +
-      '<span class="ib">' + svgIcon('<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>', 20, '#ffffff') + '</span>' +
-      '<span class="pt"><span class="t">导出 / 分享</span><span class="s">Word · PDF · 数据包（zip）</span></span>' +
-      svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') +
-      '</div>' +
+      (hasBatch
+        ? '<div class="sh-primary" id="mExport">' +
+          '<span class="ib">' + svgIcon('<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/>', 20, '#ffffff') + '</span>' +
+          '<span class="pt"><span class="t">导出 / 分享</span><span class="s">通知单 · 存根 · PDF · 数据包' +
+          (kind === 'checklist' ? ' · 清单记录' : '') + '</span></span>' +
+          svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>'
+        : '') +
+      (hasBatch
+        ? '<div class="sh-sec"><span>本次检查</span><span></span></div>' +
+          '<div class="sh-sys" id="mInfo">' +
+          svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#5a6b7b') +
+          '<span class="t">检查信息</span><span class="v">' + C.escapeHtml(b.meta.unit || '未填单位') + '</span>' +
+          '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>' +
+          '<div class="sh-sys" id="mFinish">' +
+          svgIcon('<path d="M20 6L9 17l-5-5"/>', 18, '#1e8e5a') +
+          '<span class="t">完成本次检查</span><span class="v"></span>' +
+          '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>'
+        : '') +
       '<div class="sh-sec"><span>其它</span><span></span></div>' +
       '<div class="sh-sys" id="mStorage">' +
       svgIcon('<rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="13" width="16" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/>', 18, '#5a6b7b') +
@@ -1259,16 +1206,16 @@
           '<span class="t">检查更新 App 壳</span><span class="v" id="mUpdateVal">' + C.escapeHtml(appVer || '检查') + '</span>' +
           '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>'
         : '') +
-      '<div class="hint" style="padding:4px 22px 0">网页内容会自动更新；只有 App 壳（相机、安装器等）改动时才需要装新版 APK。</div>' +
+      '<div class="hint" style="padding:4px 22px 0">网页内容会自动更新；只有 App 壳改动时才需要装新版 APK。</div>' +
       '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
     );
-
-    $('mClose').onclick = function () {
-      checkSel = {};
-      histMode = false;
-      closeSheet();
-    };
-    $('mExport').onclick = function () { closeSheet(); backTo = 'detail'; openExport(); };
+    $('mClose').onclick = closeSheet;
+    var ex = $('mExport');
+    if (ex) ex.onclick = function () { closeSheet(); openExport(); };
+    var inf = $('mInfo');
+    if (inf) inf.onclick = function () { closeSheet(); openSetup({ title: '检查信息' }); };
+    var fin = $('mFinish');
+    if (fin) fin.onclick = function () { closeSheet(); finishCheck(); };
     $('mStorage').onclick = function () { closeSheet(); storageInfo(); };
     var upd = $('mUpdate');
     if (upd) {
@@ -1280,39 +1227,350 @@
     refreshUpdateHint();
   }
 
-  function toggleCheck(id) {
-    if (checkSel[id]) delete checkSel[id];
-    else checkSel[id] = true;
-    openMenu('add', true);
+  // ---------------- 入口页 ⋯ ----------------
+  function openEntryMenu() {
+    openSheet(
+      '<div class="sh-grab"></div>' +
+      '<div class="sh-hd"><div><div class="tt">设置</div><div class="mt">默认单位与检查人，新建检查会自动带上</div></div>' +
+      '<button class="sh-x" id="mClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
+      '<div class="sh-sys" id="mDefault">' +
+      svgIcon('<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>', 18, '#5a6b7b') +
+      '<span class="t">默认检查信息</span><span class="v"></span>' +
+      '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>' +
+      '<div class="sh-sys" id="mStorage2">' +
+      svgIcon('<rect x="4" y="5" width="16" height="6" rx="2"/><rect x="4" y="13" width="16" height="6" rx="2"/><path d="M7 8h.01M7 16h.01"/>', 18, '#5a6b7b') +
+      '<span class="t">存储占用 / 清理</span><span class="v"></span>' +
+      '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>' +
+      (hasUpdateBridge()
+        ? '<div class="sh-sys" id="mUpdate2">' +
+          svgIcon('<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 5v6h-6"/>', 18, '#5a6b7b') +
+          '<span class="t">检查更新 App 壳</span><span class="v"></span>' +
+          '<span class="chev">' + svgIcon('<path d="M9 6l6 6-6 6"/>', 16, 'currentColor') + '</span></div>'
+        : '') +
+      '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
+    );
+    $('mClose').onclick = closeSheet;
+    $('mDefault').onclick = function () { closeSheet(); openDefaults(); };
+    $('mStorage2').onclick = function () { closeSheet(); storageInfo(); };
+    var u2 = $('mUpdate2');
+    if (u2) u2.onclick = function () { closeSheet(); try { window.SnapAndroid.checkUpdate(); } catch (e) {} };
   }
 
-  async function toggleAllChecks() {
-    var bs = await dbAll('batches');
-    var list = bs.filter(function (b) { return b.id !== state.batch.id; });
-    var every = list.length && list.every(function (b) { return checkSel[b.id]; });
-    checkSel = {};
-    if (!every) list.forEach(function (b) { checkSel[b.id] = true; });
-    openMenu('add', true);
+  // ---------------- 模块模型 ----------------
+  var MODULES = [
+    { kind: 'photo', name: '一般检查', icon: 'photo',
+      desc: '拍照记录隐患，出通知单 + 存根' },
+    { kind: 'checklist', name: '189 条清单化检查', icon: 'list',
+      desc: '逐项检查，出清单记录 + 通知单' },
+    { kind: 'special', name: '专项检查', icon: 'special',
+      desc: '专项名称 → 通知单 + 存根 + 销号表' }
+  ];
+  var MODULE_BY_KIND = {};
+  MODULES.forEach(function (m) { MODULE_BY_KIND[m.kind] = m; });
+
+  function moduleOf(b) {
+    if (!b) return 'photo';
+    if (b.kind === 'special') return 'special';
+    if (b.kind === 'checklist') return 'checklist';
+    if (b.kind === 'photo') return 'photo';
+    var a = (b.checklist && b.checklist.answers) || {};
+    if (Object.keys(a).length) return 'checklist';
+    if ((b.meta && b.meta.check_type || '').indexOf('专项') >= 0) return 'special';
+    return 'photo';
   }
 
-  async function deleteChecked() {
-    var ids = Object.keys(checkSel);
-    if (!ids.length) return;
-    var bs = await dbAll('batches');
-    var cnt = 0;
-    bs.forEach(function (b) { if (checkSel[b.id]) cnt += b.hazards.length; });
-    if (!confirm('删除 ' + ids.length + ' 个检查（共 ' + cnt + ' 条隐患，照片一起删除，不可恢复）？')) return;
-    for (var k = 0; k < ids.length; k++) {
-      if (ids[k] === state.batch.id) continue;
-      var ps = await dbIndex('photos', 'byBatch', ids[k]);
-      for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
-      await dbDel('batches', ids[k]);
+  function moduleName(kind) {
+    return (MODULE_BY_KIND[kind] || MODULES[0]).name;
+  }
+
+  function loadCurrentMap() {
+    try {
+      var raw = localStorage.getItem('snap.current');
+      if (raw) {
+        var o = JSON.parse(raw);
+        return { photo: o.photo || null, checklist: o.checklist || null, special: o.special || null };
+      }
+    } catch (e) {}
+    return { photo: null, checklist: null, special: null };
+  }
+
+  function saveCurrentMap(m) {
+    try { localStorage.setItem('snap.current', JSON.stringify(m)); } catch (e) {}
+  }
+
+  function getCurrent(kind) {
+    return loadCurrentMap()[kind] || null;
+  }
+
+  function setCurrent(kind, id) {
+    var m = loadCurrentMap();
+    m[kind] = id || null;
+    saveCurrentMap(m);
+  }
+
+  function isDone(b) { return !!(b && b.done); }
+
+  function isChecklistBatch(b) {
+    return !!b && moduleOf(b) === 'checklist';
+  }
+
+  function isValidKind(kind) {
+    return kind === 'photo' || kind === 'checklist' || kind === 'special';
+  }
+
+  // 一次性迁移：给老批次补 kind
+  async function migrateKinds() {
+    if (localStorage.getItem('snap.migrated41')) return;
+    var all = await dbAll('batches');
+    all.sort(function (a, b) { return ((b.updated || b.created) || '').localeCompare((a.updated || a.created) || ''); });
+    var picked = { photo: 0, checklist: 0, special: 0 };
+    var map = { photo: null, checklist: null, special: null };
+    for (var i = 0; i < all.length; i++) {
+      var b = all[i];
+      var k = moduleOf(b);
+      if (!b.kind) { b.kind = k; await dbPut('batches', b); }
+      if (isDone(b)) continue;
+      if (!map[k]) { map[k] = b.id; picked[k] = 1; }
     }
-    checkSel = {};
-    toast('已删除 ' + ids.length + ' 个检查');
-    showView('home');
-    openMenu('add', false);
+    saveCurrentMap(map);
+    try { localStorage.setItem('snap.migrated41', '1'); } catch (e) {}
   }
+
+  function moduleStats(b) {
+    if (!b) return { text: '未开始', tone: 'idle', done: 0 };
+    var n = b.hazards.length;
+    if (moduleOf(b) === 'checklist') {
+      var st = ckListStats(b);
+      var tone2 = st.done ? 'run' : 'idle';
+      return { text: '已检 ' + st.done + '/' + st.total + (st.ng ? ' · 不符合 ' + st.ng : ''), tone: tone2, done: st.done, total: st.total };
+    }
+    return {
+      text: n ? (n + ' 条隐患') : '还没有隐患',
+      tone: n ? 'run' : 'idle',
+      done: n
+    };
+  }
+
+  // ---------------- 入口页（三块） ----------------
+  async function renderEntry() {
+    var map = loadCurrentMap();
+    var all = await dbAll('batches');
+    var byId = {};
+    all.forEach(function (b) { byId[b.id] = b; });
+    var doneN = all.filter(isDone).length;
+    var cur = state.cfg || {};
+    $('entrySub').textContent = cur.unit
+      ? ('受查单位默认：' + (cur.short_unit || cur.unit))
+      : '先填一次默认信息，之后新建检查会自动带上';
+    $('doneCount').textContent = doneN;
+    var html = MODULES.map(function (m) {
+      var b = map[m.kind] ? byId[map[m.kind]] : null;
+      if (b && isDone(b)) b = null;
+      var st = moduleStats(b);
+      var w = b ? batchWhen(b) : null;
+      var when = b ? ([w.date, w.time].filter(Boolean).join(' ')) : '';
+      var nm = b ? ((b.meta.name || '').trim() || when) : '';
+      var cardCls = 'entry-card' + (b ? ' run' : '');
+      return '<div class="' + cardCls + '" data-kind="' + m.kind + '">' +
+        '<div class="entry-top">' +
+        '<span class="entry-ic ' + m.kind + '">' + moduleIcon(m.icon) + '</span>' +
+        '<div class="entry-tt"><b>' + C.escapeHtml(m.name) + '</b>' +
+        '<span class="entry-desc">' + C.escapeHtml(m.desc) + '</span></div>' +
+        '<span class="entry-dot ' + st.tone + '"></span>' +
+        '</div>' +
+        (b
+          ? '<div class="entry-state"><b>' + C.escapeHtml(nm) + '</b><span>' + C.escapeHtml(st.text) + '</span></div>'
+          : '<div class="entry-state idle"><span>未开始</span></div>') +
+        '<div class="entry-acts">' +
+        (b
+          ? '<button class="btn primary" data-go="' + m.kind + '">继续</button>' +
+            '<button class="btn ghost" data-new="' + m.kind + '">完成并新建</button>'
+          : '<button class="btn primary" data-new="' + m.kind + '">开始 ' + C.escapeHtml(m.name) + '</button>') +
+        '</div></div>';
+    }).join('');
+    $('entryList').innerHTML = html;
+    Array.prototype.forEach.call($('entryList').querySelectorAll('.entry-card'), function (card) {
+      card.addEventListener('click', function (e) {
+        var goBtn = e.target.closest('[data-go]');
+        var newBtn = e.target.closest('[data-new]');
+        if (newBtn) { e.stopPropagation(); startNewCheck(newBtn.dataset.new); return; }
+        if (goBtn) { e.stopPropagation(); openModule(goBtn.dataset.go); return; }
+        openModule(card.dataset.kind);
+      });
+    });
+    updateBadge();
+  }
+
+  function moduleIcon(name) {
+    if (name === 'list') {
+      return svgIcon('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h1M4 12h1M4 18h1"/>', 22, '#8A5A00');
+    }
+    if (name === 'special') {
+      return svgIcon('<path d="M4 5h16v5H4z"/><path d="M6 10v9h12v-9"/><path d="M10 14h4"/>', 22, '#1B5A86');
+    }
+    return svgIcon('<path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/>', 22, '#1f4e79');
+  }
+
+  // ---------------- 进入模块 ----------------
+  async function openModule(kind) {
+    if (!isValidKind(kind)) kind = 'photo';
+    var id = getCurrent(kind);
+    var b = id ? await dbGet('batches', id) : null;
+    if (!b || isDone(b)) {
+      // 没有进行中 → 空态工作台
+      state.batch = null;
+      state.photos = [];
+      state.moduleKind = kind;
+      showView('home');
+      renderHome();
+      return;
+    }
+    state.batch = b;
+    state.moduleKind = kind;
+    await refreshPhotos();
+    showView('home');
+  }
+
+  async function startNewCheck(kind) {
+    if (!isValidKind(kind)) kind = 'photo';
+    var id = getCurrent(kind);
+    if (id) {
+      var cur = await dbGet('batches', id);
+      if (cur && !isDone(cur)) {
+        var empty = !cur.hazards.length && !Object.keys((cur.checklist && cur.checklist.answers) || {}).length;
+        if (!empty) {
+          if (!confirm('「' + moduleName(kind) + '」还有一份没完成的检查，是否先把它标为完成再新建？\n（取消则继续当前这份）')) {
+            openModule(kind);
+            return;
+          }
+          await finishCheck(true);
+        } else {
+          await dbDel('batches', id);
+          setCurrent(kind, null);
+        }
+      }
+    }
+    var b = newBatchMeta(state.cfg || {});
+    b.kind = kind;
+    b.done = false;
+    b.special_name = kind === 'special' ? (state.cfg.special_name || '') : '';
+    if (kind === 'special') b.meta.check_type = '专项检查';
+    if (kind === 'checklist') {
+      var last = await lastChecklistWithAnswers();
+      if (last && confirm('要复制上一份清单的结果和描述吗？\n（' + (((last.batch.meta.name || '').trim()) || last.batch.meta.check_date) +
+        ' · ' + Object.keys(last.answers).length + ' 项）\n\n点“取消”则从空白开始。')) {
+        b.checklist = { answers: last.answers, copied_from: last.batch.id };
+      }
+    }
+    await dbPut('batches', b);
+    setCurrent(kind, b.id);
+    state.batch = b;
+    state.photos = [];
+    state.moduleKind = kind;
+    openSetup({
+      title: '新建' + moduleName(kind),
+      sub: kind === 'checklist' ? '189 条清单，逐项检查'
+        : (kind === 'special' ? '填专项名称，出通知单 + 存根 + 销号表' : '拍照记录隐患')
+    });
+  }
+
+  // ---------------- 完成 / 归档 ----------------
+  async function finishCheck(silent) {
+    if (!state.batch) { showView('entry'); return; }
+    var b = state.batch;
+    var empty = !b.hazards.length && !Object.keys((b.checklist && b.checklist.answers) || {}).length;
+    if (empty) {
+      if (!silent && !confirm('这份检查还是空的，完成会直接删除，继续吗？')) return;
+      var mk0 = moduleOf(b);
+      await dbDel('batches', b.id);
+      setCurrent(mk0, null);
+      state.batch = null;
+      state.photos = [];
+      toast('空检查已丢弃');
+      showView('entry');
+      return;
+    }
+    if (!silent && !confirm('完成「' + (((b.meta.name || '').trim()) || b.meta.check_date) + '」？\n完成后会进「已完成」，可随时打开继续改。')) return;
+    var mk = moduleOf(b);
+    b.done = true;
+    b.done_at = C.isoNow();
+    await saveBatch();
+    setCurrent(mk, null);
+    archiveKind = mk;
+    state.batch = null;
+    state.photos = [];
+    toast('已完成，可在「已完成」里找回');
+    showView('entry');
+  }
+
+  async function openArchive(kind) {
+    archiveKind = isValidKind(kind) ? kind : (archiveKind || 'photo');
+    showView('archive');
+  }
+
+  async function renderArchive() {
+    var all = (await dbAll('batches')).filter(isDone);
+    all.sort(function (a, b) { return ((b.done_at || b.updated) || '').localeCompare((a.done_at || a.updated) || ''); });
+    var list = all.filter(function (b) { return moduleOf(b) === archiveKind; });
+    Array.prototype.forEach.call($('archiveTabs').children, function (x) {
+      x.classList.toggle('on', x.dataset.f === archiveKind);
+    });
+    $('archiveSub').textContent = '共 ' + list.length + ' 份' + (list.length ? '' : '（在这个模块里还没有完成的检查）');
+    $('archiveList').innerHTML = list.length ? list.map(function (b) {
+      var w = batchWhen(b);
+      var nm = (b.meta.name || '').trim() || (w.date + (w.time ? ' ' + w.time : ''));
+      var st = b.hazards.length + ' 条隐患';
+      if (moduleOf(b) === 'checklist') {
+        var s2 = ckListStats(b);
+        st = '已检 ' + s2.done + '/' + s2.total;
+      }
+      return '<div class="arc-row" data-id="' + C.escapeHtml(b.id) + '">' +
+        '<div class="arc-main"><div class="arc-t">' + C.escapeHtml(nm) + '</div>' +
+        '<div class="arc-s">' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') +
+        ' · ' + C.escapeHtml(st) + (b.exported_at ? ' · 已出单' : '') + '</div></div>' +
+        '<div class="arc-acts">' +
+        '<button class="btn small" data-open="' + C.escapeHtml(b.id) + '">打开</button>' +
+        '<button class="btn small danger" data-del="' + C.escapeHtml(b.id) + '">删除</button>' +
+        '</div></div>';
+    }).join('') : '<div class="ck-empty">这里还没有已完成的检查</div>';
+    Array.prototype.forEach.call($('archiveList').querySelectorAll('[data-open]'), function (btn) {
+      btn.onclick = function () { reopenCheck(btn.dataset.open); };
+    });
+    Array.prototype.forEach.call($('archiveList').querySelectorAll('[data-del]'), function (btn) {
+      btn.onclick = function () { deleteArchived(btn.dataset.del); };
+    });
+  }
+
+  async function reopenCheck(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    var k = moduleOf(b);
+    if (!confirm('把它重新打开为进行中？会占用「' + moduleName(k) + '」的进行中位置。')) return;
+    var curId = getCurrent(k);
+    if (curId && curId !== id) {
+      var cur = await dbGet('batches', curId);
+      if (cur && !isDone(cur)) { toast('该模块已有进行中的检查，请先完成它'); return; }
+    }
+    b.done = false;
+    b.done_at = '';
+    b.updated = C.isoNow();
+    await dbPut('batches', b);
+    setCurrent(k, b.id);
+    toast('已恢复为进行中');
+    openModule(k);
+  }
+
+  async function deleteArchived(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    if (!confirm('删除这份检查？其中的隐患和照片会一起删除，不能恢复。')) return;
+    var ps = await dbIndex('photos', 'byBatch', id);
+    for (var i = 0; i < ps.length; i++) await dbDel('photos', ps[i].key);
+    await dbDel('batches', id);
+    toast('已删除');
+    renderArchive();
+  }
+
 
   async function refreshUpdateHint() {
     var el = $('mUpdateVal');
@@ -1331,147 +1589,6 @@
     } catch (e) {}
   }
 
-  async function newCheck() {
-    var b = newBatchMeta(state.cfg || {});
-    b.kind = 'photo';
-    await dbPut('batches', b);
-    state.batch = b;
-    state.photos = [];
-    showView('home');
-    openSetup({ title: '新建现场检查', sub: '拍照记录隐患' });
-    toast('已新建检查，填好信息就可以拍照');
-  }
-
-  // ---------------- 检查列表 ----------------
-  async function openChecks() {
-    chkManage = false;
-    chkSel = {};
-    showView('checks');
-  }
-
-  function checkProgressText(b) {
-    if (isChecklistBatch(b)) {
-      var st = ckListStats(b);
-      return '清单 ' + st.done + '/' + st.total + (st.ng ? ' · 不符合 ' + st.ng : '');
-    }
-    return b.hazards.length + ' 条隐患';
-  }
-
-  async function renderChecks() {
-    var all = await dbAll('batches');
-    all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
-    var list = all.filter(function (b) {
-      if (chkFilter === 'photo') return !isChecklistBatch(b);
-      if (chkFilter === 'checklist') return isChecklistBatch(b);
-      return true;
-    });
-    $('checksSub').textContent = '共 ' + all.length + ' 个检查';
-    Array.prototype.forEach.call($('checksTabs').children, function (b) {
-      b.classList.toggle('on', b.dataset.f === chkFilter);
-    });
-    $('checksList').innerHTML = list.length ? list.map(function (b) {
-      var w = batchWhen(b);
-      var nm = (b.meta.name || '').trim() || (w.date + (w.time ? ' ' + w.time : ''));
-      var on = b.id === state.batch.id;
-      var sel = !!chkSel[b.id];
-      return '<div class="chk-row' + (on ? ' on' : '') + (sel ? ' sel' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
-        (chkManage ? '<span class="chk-cb' + (sel ? ' on' : '') + '">' + (sel ? '✓' : '') + '</span>' : '') +
-        '<div class="chk-main"><div class="chk-t">' + C.escapeHtml(nm) +
-        (isChecklistBatch(b) ? '<span class="type-badge list">清单</span>' : '<span class="type-badge">现场</span>') +
-        (on ? '<span class="type-badge">当前</span>' : '') + '</div>' +
-        '<div class="chk-s">' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') +
-        ' · ' + C.escapeHtml(checkProgressText(b)) + '</div></div>' +
-        '<span class="chev">›</span></div>';
-    }).join('') : '<div class="ck-empty">还没有检查<br>点下面「新建检查」开始</div>';
-    $('btnChecksManage').textContent = chkManage ? '取消' : '管理';
-    $('btnChecksManage').style.visibility = chkManage ? 'hidden' : 'visible';
-    $('checkSelBar').classList.toggle('hidden', !chkManage);
-    $('checkSelCount').textContent = '已选 ' + Object.keys(chkSel).length + ' 条';
-    var fab = document.querySelector('#viewChecks .fabbar');
-    if (fab) fab.classList.toggle('hidden', chkManage);
-    Array.prototype.forEach.call($('checksList').querySelectorAll('.chk-row'), function (r) {
-      r.onclick = function () {
-        var id = r.dataset.id;
-        if (chkManage) {
-          if (id === state.batch.id) return;
-          if (chkSel[id]) delete chkSel[id]; else chkSel[id] = true;
-          renderChecks();
-          return;
-        }
-        switchCheck(id);
-      };
-    });
-  }
-
-  async function switchCheck(id) {
-    if (id === state.batch.id) { showView('home'); return; }
-    var b = await dbGet('batches', id);
-    if (!b) return;
-    state.batch = b;
-    state.photos = [];
-    await refreshPhotos();
-    showView('home');
-    toast('已切换到 ' + ((b.meta.name || '').trim() || b.meta.check_date));
-  }
-
-  async function createCheck(kind) {
-    var b = newBatchMeta(state.cfg || {});
-    b.kind = kind === 'checklist' ? 'checklist' : 'photo';
-    await dbPut('batches', b);
-    state.batch = b;
-    state.photos = [];
-    openSetup({
-      title: b.kind === 'checklist' ? '新建清单检查' : '新建现场检查',
-      sub: b.kind === 'checklist' ? '189 条清单，逐项检查' : '拍照记录隐患'
-    });
-  }
-
-  async function deleteChecks() {
-    var ids = Object.keys(chkSel).filter(function (id) { return id !== state.batch.id; });
-    if (!ids.length) { toast('请选择要删除的检查'); return; }
-    if (!confirm('删除 ' + ids.length + ' 个检查？其中的隐患和照片会一起删除，不能恢复。')) return;
-    for (var i = 0; i < ids.length; i++) {
-      var ps = await dbIndex('photos', 'byBatch', ids[i]);
-      for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
-      await dbDel('batches', ids[i]);
-    }
-    chkSel = {};
-    toast('已删除 ' + ids.length + ' 个检查');
-    renderChecks();
-  }
-
-  function openNewCheckSheet() {
-    openSheet(
-      '<div class="sh-grab"></div>' +
-      '<div class="sh-hd"><div><div class="tt">新建检查</div><div class="mt">先选一种检查方式</div></div>' +
-      '<button class="sh-x" id="mNewClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
-      '<div class="sh-primary" id="mNewPhoto">' +
-      '<span class="ib">' + svgIcon('<path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/>', 20, '#fff') + '</span>' +
-      '<span class="pt"><span class="t">现场检查</span><span class="s">拍照记录隐患，逐条写描述</span></span>' +
-      svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
-      '<div class="sh-grid"><div class="sh-tile" id="mNewList">' +
-      svgIcon('<path d="M9 5h9a1 1 0 011 1v13a1 1 0 01-1 1H6a1 1 0 01-1-1V6a1 1 0 011-1h3z"/><path d="M9 4h6v3H9z"/><path d="M8.5 12h7M8.5 16h5"/>', 18, '#1f4e79') +
-      '<span>清单检查<br><small style="color:#8a97a6">189 条逐项检查</small></span></div></div>' +
-      '<div class="sh-foot">随时可在检查列表切换</div>'
-    );
-    $('mNewClose').onclick = closeSheet;
-    $('mNewPhoto').onclick = function () { closeSheet(); createCheck('photo'); };
-    $('mNewList').onclick = function () { closeSheet(); createCheck('checklist'); };
-  }
-
-  // 单击只选中（留在面板），双击才进随手拍
-  async function selectBatch(id) {
-    var b = await dbGet('batches', id);
-    if (!b) return;
-    state.batch = b;
-    await refreshPhotos();
-    showView('home');
-    openMenu('add');
-    var nm = (b.meta.name || '').trim();
-    var w = batchWhen(b);
-    toast('已选中：' + (nm || [w.date, w.time].filter(Boolean).join(' ')));
-  }
-
   async function storageInfo() {
     var bytes = state.photos.reduce(function (s, p) { return s + (p.bytes || 0); }, 0);
     var quota = 0;
@@ -1485,7 +1602,7 @@
     var empties = [];
     for (var i = 0; i < all.length; i++) {
       var b0 = all[i];
-      if (b0.id === state.batch.id || b0.hazards.length) continue;
+      if ((state.batch && b0.id === state.batch.id) || b0.hazards.length) continue;
       var ps0 = await dbIndex('photos', 'byBatch', b0.id);
       if (!ps0.length) empties.push(b0);
     }
@@ -1531,8 +1648,55 @@
     $('cfgDeadlineHint').textContent = '整改期限：' + SnapDocx._internal.fmtCN(d) + '前';
   }
 
+  // 入口页 ⋯ → 默认检查信息（只改 snap.cfg，不涉及批次）
+  function openDefaults() {
+    state.defaultsMode = true;
+    state.setupReturn = 'entry';
+    var cfg = state.cfg || {};
+    $('setupTitle').textContent = '默认检查信息';
+    $('setupSub').textContent = '新建检查时自动带上，可逐次修改';
+    $('btnSaveCfg').textContent = '保存默认值';
+    $('btnSetBack').style.visibility = 'visible';
+    $('cfgName').value = cfg.name || '';
+    $('cfgUnit').value = cfg.unit || '';
+    $('cfgShort').value = cfg.short_unit || '';
+    $('cfgIssue').value = cfg.issue_unit || '';
+    $('cfgInspectors').value = cfg.inspectors || '';
+    $('cfgLocation').value = cfg.location || '';
+    $('cfgType').value = cfg.check_type || '一般检查';
+    $('cfgDate').value = C.todayStr();
+    $('cfgDays').value = cfg.deadline_days || 7;
+    $('cfgSpecial').value = cfg.special_name || '';
+    $('cfgRequirement').value = '';
+    $('cfgOpinion').value = '';
+    $('cfgRemember').checked = true;
+    updateDeadlineHint();
+    showView('settings');
+  }
+
+  function saveDefaults() {
+    saveCfg({
+      unit: $('cfgUnit').value.trim(),
+      short_unit: $('cfgShort').value.trim(),
+      issue_unit: $('cfgIssue').value.trim(),
+      inspectors: $('cfgInspectors').value.trim(),
+      location: $('cfgLocation').value.trim(),
+      check_type: $('cfgType').value,
+      special_name: $('cfgSpecial').value.trim(),
+      deadline_days: Math.max(1, Math.min(365, Number($('cfgDays').value) || 7)),
+      locations: (state.cfg && state.cfg.locations) || []
+    });
+    state.currentCfg = loadCfg();
+    state.cfg = state.currentCfg;
+    state.defaultsMode = false;
+    toast('默认信息已保存');
+    showView('entry');
+  }
+
   function openSetup(opts) {
     opts = opts || {};
+    if (!state.batch) { openDefaults(); return; }
+    state.defaultsMode = false;
     var meta = state.batch.meta;
     $('setupTitle').textContent = opts.title || '检查信息';
     $('setupSub').textContent = opts.sub || '写进通知单的表头和落款';
@@ -1557,6 +1721,8 @@
   }
 
   function saveSetup() {
+    if (state.defaultsMode) { saveDefaults(); return; }
+    if (!state.batch) { showView('entry'); return; }
     var meta = state.batch.meta;
     meta.name = $('cfgName').value.trim();
     meta.unit = $('cfgUnit').value.trim();
@@ -1592,10 +1758,16 @@
 
   // ---------------- 离线状态 ----------------
   function updateBadge() {
-    var b = $('offlineBadge');
-    if (!('serviceWorker' in navigator)) { b.textContent = '仅在线'; b.className = 'badge warn'; return; }
-    if (navigator.serviceWorker.controller) { b.textContent = '离线可用 ✓'; b.className = 'badge ok'; }
-    else { b.textContent = '缓存中…'; b.className = 'badge warn'; }
+    var txt, cls;
+    if (!('serviceWorker' in navigator)) { txt = '仅在线'; cls = 'badge warn'; }
+    else if (navigator.serviceWorker.controller) { txt = '离线可用 ✓'; cls = 'badge ok'; }
+    else { txt = '缓存中…'; cls = 'badge warn'; }
+    ['offlineBadge', 'offlineBadge2'].forEach(function (id) {
+      var b = $(id);
+      if (!b) return;
+      b.textContent = txt;
+      b.className = cls;
+    });
   }
 
   function applyConfigFromHash() {
@@ -1629,15 +1801,15 @@
     applyConfigFromHash();
 
     await openDB();
-    var batches = await dbAll('batches');
-    batches.sort(function (a, b) { return (b.updated || '').localeCompare(a.updated || ''); });
-    if (batches.length) {
-      state.batch = batches[0];
-      await refreshPhotos();
-      showView('home');
-    } else {
-      await newCheck();
+    await migrateKinds();
+    var curId = getCurrent('photo');
+    if (curId) {
+      var cb = await dbGet('batches', curId);
+      if (cb && !isDone(cb)) { state.batch = cb; await refreshPhotos(); }
+      else { state.batch = null; setCurrent('photo', null); }
     }
+    state.moduleKind = state.batch ? moduleOf(state.batch) : 'photo';
+    showView('entry');
     updateBadge();
   }
 
@@ -1657,8 +1829,6 @@
   CK_GROUPS.forEach(function (g) { g.items.forEach(function (it) { CK_FLAT.push(it); }); });
   var ckMeta = { view: 'groups', gi: -1, filter: 'all', openItem: {}, batch: false };
   var ckSel = {};
-  var ckMgrMode = false;
-  var ckMgrSel = {};
 
   function ckAnswers() {
     if (!state.batch.checklist) state.batch.checklist = { answers: {} };
@@ -1702,128 +1872,6 @@
     return { done: done, ng: ng, total: CK_FLAT.length };
   }
 
-  async function openChecklistManager(manage) {
-    ckMgrMode = !!manage;
-    var all = (await dbAll('batches')).filter(isChecklistBatch);
-    all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
-    var selN = Object.keys(ckMgrSel).length;
-    var rows = all.map(function (b) {
-      var w = batchWhen(b);
-      var nm = (b.meta.name || '').trim();
-      var label = nm
-        ? C.escapeHtml(nm) + '<span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span>'
-        : C.escapeHtml(w.date) + (w.time ? '<span>' + C.escapeHtml(w.time) + '</span>' : '');
-      var st = ckListStats(b);
-      var on = b.id === state.batch.id;
-      var sel = !on && !!ckMgrSel[b.id];
-      if (ckMgrMode) {
-        return '<div class="cm-row' + (on ? ' dis' : '') + (sel ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
-          '<span class="cm-check">' + (sel ? '✓' : '') + '</span>' +
-          '<span class="d">' + label + '</span>' +
-          (on ? '<span class="badge">当前</span>' : '') +
-          '<span class="n">' + st.done + '/' + st.total + ' · 不符合 ' + st.ng + '</span></div>';
-      }
-      return '<div class="sh-hist' + (on ? ' on' : '') + '" data-batch="' + C.escapeHtml(b.id) + '">' +
-        '<span class="dot"></span>' +
-        '<span class="d">' + label + '</span>' +
-        (on ? '<span class="badge">当前</span>' : '') +
-        '<span class="n">已检 ' + st.done + '</span></div>';
-    }).join('');
-    openSheet(
-      '<div class="sh-grab"></div>' +
-      '<div class="sh-hd"><div><div class="tt">' + (ckMgrMode ? '管理清单化检查' : '清单化检查') + '</div>' +
-      '<div class="mt">' + (ckMgrMode ? '删除会连同该检查的隐患与照片；当前清单不能删'
-        : '共 ' + all.length + ' 份，点一条打开清单') + '</div></div>' +
-      '<button class="sh-x" id="mClClose">' +
-      (ckMgrMode ? '<span style="font-size:13px">取消</span>' : svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b')) +
-      '</button></div>' +
-      (ckMgrMode ? '' :
-        '<div class="sh-primary" id="mClNew">' +
-        '<span class="ib">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 20, '#ffffff') + '</span>' +
-        '<span class="pt"><span class="t">新建清单化检查</span><span class="s">空白，或复制上次清单</span></span>' +
-        svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>') +
-      '<div class="sh-sec"><span>历史清单化检查</span><span>' + (ckMgrMode ? '已选 ' + selN + ' 份' : '共 ' + all.length + ' 份') + '</span></div>' +
-      (rows || '<div class="sh-hist"><span class="d">暂无</span></div>') +
-      (ckMgrMode
-        ? '<div class="cm-actions"><div class="btn ghost" id="mClAll">全选</div>' +
-          '<div class="btn primary' + (selN ? '' : ' disabled') + '" id="mClDel">删除（' + selN + '）</div>' +
-          '<div class="btn ghost" id="mClCancel">取消</div></div>'
-        : '') +
-      '<div class="sh-foot">' + C.escapeHtml(versionText()) + '</div>'
-    );
-    $('mClClose').onclick = function () {
-      if (ckMgrMode) { ckMgrSel = {}; openChecklistManager(false); return; }
-      closeSheet();
-    };
-    if (ckMgrMode) {
-      $('mClAll').onclick = function () {
-        var list = $('sheet').querySelectorAll('.cm-row[data-batch]:not(.dis)');
-        var every = list.length && Array.prototype.every.call(list, function (r) { return ckMgrSel[r.dataset.batch]; });
-        ckMgrSel = {};
-        Array.prototype.forEach.call(list, function (r) { if (!every) ckMgrSel[r.dataset.batch] = true; });
-        openChecklistManager(true);
-      };
-      $('mClCancel').onclick = function () { ckMgrSel = {}; openChecklistManager(false); };
-      $('mClDel').onclick = async function () {
-        var ids = Object.keys(ckMgrSel).filter(function (id) { return id !== state.batch.id; });
-        if (!ids.length) return;
-        if (!confirm('删除 ' + ids.length + ' 条检查（含隐患记录和照片，不可恢复）？')) return;
-        for (var i = 0; i < ids.length; i++) {
-          var ps = await dbIndex('photos', 'byBatch', ids[i]);
-          for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
-          await dbDel('batches', ids[i]);
-        }
-        ckMgrSel = {};
-        toast('已删除 ' + ids.length + ' 条检查');
-        openChecklistManager(false);
-      };
-    } else {
-      $('mClNew').onclick = function () { openNewChecklistSheet(); };
-    }
-    Array.prototype.forEach.call($('sheet').querySelectorAll('[data-batch]'), function (r) {
-      var on = r.classList.contains('on') || r.classList.contains('dis');
-      if (ckMgrMode) {
-        if (!on) r.onclick = function () {
-          if (ckMgrSel[r.dataset.batch]) delete ckMgrSel[r.dataset.batch];
-          else ckMgrSel[r.dataset.batch] = true;
-          openChecklistManager(true);
-        };
-        return;
-      }
-      var timer = null, longPressed = false;
-      var start = function () {
-        longPressed = false;
-        clearTimeout(timer);
-        timer = setTimeout(function () {
-          longPressed = true;
-          ckMgrSel = {};
-          if (!on) ckMgrSel[r.dataset.batch] = true;
-          openChecklistManager(true);
-        }, 480);
-      };
-      var cancel = function () { clearTimeout(timer); };
-      r.addEventListener('touchstart', start, { passive: true });
-      r.addEventListener('touchend', cancel);
-      r.addEventListener('touchmove', cancel, { passive: true });
-      r.addEventListener('mousedown', start);
-      r.addEventListener('mouseup', cancel);
-      r.addEventListener('mouseleave', cancel);
-      r.onclick = function () {
-        if (longPressed) { longPressed = false; return; }
-        closeSheet();
-        ckMgrOpen(r.dataset.batch);
-      };
-    });
-  }
-
-  async function ckMgrOpen(id) {
-    var b = await dbGet('batches', id);
-    if (!b) return;
-    state.batch = b;
-    await refreshPhotos();
-    openChecklist();
-  }
-
   function copyChecklistAnswers(src) {
     var out = {};
     var a = (src && src.checklist && src.checklist.answers) || {};
@@ -1834,62 +1882,17 @@
     return out;
   }
 
-  async function openNewChecklistSheet() {
-    var all = (await dbAll('batches')).filter(isChecklistBatch);
-    all.sort(function (a, b) { return (b.created || '').localeCompare(a.created || ''); });
-    var src = null, srcN = 0;
+  // 建清单检查时可选“复制上次清单”
+  async function lastChecklistWithAnswers() {
+    var all = (await dbAll('batches')).filter(function (b) { return moduleOf(b) === 'checklist'; });
+    all.sort(function (x, y) { return ((y.updated || y.created) || '').localeCompare((x.updated || x.created) || ''); });
     for (var i = 0; i < all.length; i++) {
       var ans = copyChecklistAnswers(all[i]);
-      var n = Object.keys(ans).length;
-      if (n) { src = all[i]; srcN = n; break; }
+      if (Object.keys(ans).length) return { batch: all[i], answers: ans };
     }
-    var w = src ? batchWhen(src) : null;
-    var srcName = src ? (((src.meta.name || '').trim()) || [w.date, w.time].filter(Boolean).join(' ')) : '';
-    openSheet(
-      '<div class="sh-grab"></div>' +
-      '<div class="sh-hd"><div><div class="tt">新建检查清单</div><div class="mt">会新建一条检查，当前这条保留</div></div>' +
-      '<button class="sh-x" id="mNcClose">' + svgIcon('<path d="M6 6l12 12M18 6L6 18"/>', 15, '#5a6b7b') + '</button></div>' +
-      '<div class="sh-primary" id="mNcBlank">' +
-      '<span class="ib">' + svgIcon('<path d="M12 5v14M5 12h14"/>', 20, '#ffffff') + '</span>' +
-      '<span class="pt"><span class="t">新建空白清单</span><span class="s">189 条全部为未检</span></span>' +
-      svgIcon('<path d="M9 6l6 6-6 6"/>', 18, 'rgba(255,255,255,.65)') + '</div>' +
-      (src
-        ? '<div class="sh-grid"><div class="sh-tile" id="mNcCopy" style="flex:1">' +
-          svgIcon('<path d="M8 7V5a1 1 0 011-1h9l3 3v10a1 1 0 01-1 1h-2"/><rect x="3" y="7" width="11" height="12" rx="1"/>', 18, '#1f4e79') +
-          '<span>复制上次清单<br><small style="color:#8a97a6">' + C.escapeHtml(srcName) + ' · ' + srcN + ' 项</small></span></div></div>'
-        : '<div class="hint" style="margin:12px 20px">还没有可复制的历史清单</div>') +
-      '<div class="sh-foot">新建后仍可继续修改、导出</div>'
-    );
-    $('mNcClose').onclick = closeSheet;
-    $('mNcBlank').onclick = function () { newChecklist('blank'); };
-    var cp = $('mNcCopy');
-    if (cp) cp.onclick = function () { newChecklist('copy'); };
+    return null;
   }
 
-  async function newChecklist(mode) {
-    closeSheet();
-    var b = newBatchMeta(state.cfg || {});
-    b.kind = 'checklist';
-    if (mode === 'copy') {
-      var all = await dbAll('batches');
-      all.sort(function (x, y) { return (y.created || '').localeCompare(x.created || ''); });
-      for (var i = 0; i < all.length; i++) {
-        if (!isChecklistBatch(all[i])) continue;
-        var ans = copyChecklistAnswers(all[i]);
-        if (Object.keys(ans).length) {
-          b.checklist = { answers: ans, copied_from: all[i].id };
-          break;
-        }
-      }
-    }
-    await dbPut('batches', b);
-    state.batch = b;
-    state.photos = [];
-    showView('home');
-    openChecklist();
-    var n = Object.keys((b.checklist && b.checklist.answers) || {}).length;
-    toast(mode === 'copy' && n ? ('已新建清单，复制 ' + n + ' 项') : '已新建空白清单');
-  }
 
   function ckHazardCount(no) {
     return (state.batch.hazards || []).filter(function (h) {
@@ -2069,23 +2072,24 @@
 
   // ---------------- 事件绑定 ----------------
   function bind() {
-    $('btnMenu').addEventListener('click', function () { openMenu('detail'); });
+    $('btnMenu').addEventListener('click', openModuleMenu);
+    $('btnEntryMenu').addEventListener('click', openEntryMenu);
+    $('btnEntryBack').addEventListener('click', function () { showView('entry'); });
+    $('btnArchiveEntry').addEventListener('click', function () { openArchive(archiveKind || 'photo'); });
+    $('btnArchiveBack').addEventListener('click', function () { showView('entry'); });
+    $('btnExportCkList').addEventListener('click', function () { exportOne('cklist'); });
+    Array.prototype.forEach.call($('archiveTabs').children, function (b) {
+      b.addEventListener('click', function () { archiveKind = b.dataset.f; renderArchive(); });
+    });
     $('btnCkBack').addEventListener('click', goUp);
     $('btnCkBatch').addEventListener('click', function () {
       ckMeta.batch = !ckMeta.batch;
       if (!ckMeta.batch) ckSel = {};
       renderChecklist();
     });
-    $('btnCkNew').addEventListener('click', function () { openNewChecklistSheet(); });
-    $('btnCkExport').addEventListener('click', function () {
-      exportChecklistRecord().catch(function (e) {
-        console.error(e);
-        toast('导出失败：' + (e.message || e));
-      });
-    });
     $('ckEntry').addEventListener('click', function () {
-      if (isChecklistBatch(state.batch)) openChecklist();
-      else toast('这次是现场检查；要逐项检查请到「检查」里新建清单检查');
+      if (state.batch && isChecklistBatch(state.batch)) openChecklist();
+      else toast('请先在「清单化检查」里开始一次检查');
     });
     $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
@@ -2171,36 +2175,10 @@
       });
     })();
 
-    $('btnNew').addEventListener('click', quickCapture);
-    $('btnChecks').addEventListener('click', openChecks);
-    $('btnChecksBack').addEventListener('click', function () { showView('home'); });
-    $('btnChecksManage').addEventListener('click', function () {
-      chkManage = !chkManage;
-      if (!chkManage) chkSel = {};
-      renderChecks();
-    });
-    $('btnChecksNew').addEventListener('click', openNewCheckSheet);
-    $('btnCheckSelAll').addEventListener('click', function () {
-      var on = Object.keys(chkSel).length > 0;
-      chkSel = {};
-      if (!on) {
-        Array.prototype.forEach.call($('checksList').querySelectorAll('.chk-row'), function (r) {
-          if (r.dataset.id !== state.batch.id) chkSel[r.dataset.id] = true;
-        });
-      }
-      renderChecks();
-    });
-    $('btnCheckSelDelete').addEventListener('click', deleteChecks);
-    $('btnCheckSelDone').addEventListener('click', function () {
-      chkManage = false;
-      chkSel = {};
-      renderChecks();
-    });
-    Array.prototype.forEach.call($('checksTabs').children, function (b) {
-      b.addEventListener('click', function () {
-        chkFilter = b.dataset.f;
-        renderChecks();
-      });
+    $('btnNew').addEventListener('click', function () {
+      var btn = $('btnNew');
+      if (btn.dataset.action === 'new') { startNewCheck(state.moduleKind || 'photo'); return; }
+      quickCapture();
     });
     $('btnBack').addEventListener('click', function () { completeEditing(); });
     $('btnDone').addEventListener('click', function () { completeEditing(); });
@@ -2302,29 +2280,25 @@
   // 安卓返回键：先回上一级菜单，不直接退出
   window.SnapBack = function () {
     try {
-      if (!$('mask').classList.contains('hidden')) {
-        if (histMode) { checkSel = {}; openMenu('add', false); return true; }
-        closeSheet();
-        return true;
-      }
+      if (!$('mask').classList.contains('hidden')) { closeSheet(); return true; }
       var view = document.body.dataset.view;
       if (view === 'edit') { $('btnBack').click(); return true; }
-      if (view === 'export' || view === 'settings' || view === 'checklist' || view === 'checks') { goUp(); return true; }
+      if (view === 'export' || view === 'settings' || view === 'checklist' || view === 'archive') { goUp(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
+      if (view === 'home') { showView('entry'); return true; }
     } catch (e) { console.warn('SnapBack', e); }
     return false;
   };
 
-  // 返回上一级：子页一律回拍照页；拍照页再按返回才退出
+  // 返回上一级：子页回工作台；工作台回入口；入口再按返回才退出
   function goUp() {
-    var to = backTo || 'home';
+    if (backTo === 'export' && state.batch) { backTo = null; showView('home'); return; }
     backTo = null;
-    if (to === 'add' || to === 'detail') {
-      showView('home');
-      openMenu(to);
-      return;
-    }
-    showView(to);
+    var v = document.body.dataset.view;
+    if (v === 'archive' || v === 'entry') { showView('entry'); return; }
+    if (v === 'home') { showView('entry'); return; }
+    if (state.batch) showView('home');
+    else showView('entry');
   }
 
   if (!window.SnapCore) {

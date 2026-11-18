@@ -1,0 +1,34 @@
+/* 隐患随手拍 4.1 · 入口页 / 归档 / 专项条 */
+.entry-hd{background:linear-gradient(135deg,#0F3556 0%,#1B5A86 100%);color:#fff;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;display:flex;align-items:center;gap:12px}
+.entry-hd .titles{flex:1;min-width:0}
+.entry-hd h1{margin:0;font-size:19px;font-weight:700;display:flex;align-items:center;gap:8px}
+.entry-hd .sub{font-size:12.5px;opacity:.75;margin-top:4px}
+.entry-list{padding:14px 14px 8px;display:flex;flex-direction:column;gap:12px}
+.entry-card{background:#fff;border-radius:18px;padding:16px;box-shadow:var(--shadow);border:1px solid rgba(20,40,70,.05)}
+.entry-card.run{border-color:rgba(22,104,214,.28);background:linear-gradient(180deg,#fff 0%,#F6FAFF 100%)}
+.entry-top{display:flex;align-items:center;gap:12px}
+.entry-ic{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;background:#EEF3F9;flex:0 0 auto}
+.entry-ic.photo{background:#E8F0FA}
+.entry-ic.list{background:#FFF4DC}
+.entry-ic.special{background:#E6F0FA}
+.entry-tt{flex:1;min-width:0}
+.entry-tt b{font-size:16.5px;display:block}
+.entry-desc{font-size:12.5px;color:#7C8EA1;display:block;margin-top:3px}
+.entry-dot{width:9px;height:9px;border-radius:50%;background:#D3DDE8;flex:0 0 auto}
+.entry-dot.run{background:#22A06B;box-shadow:0 0 0 4px rgba(34,160,107,.14)}
+.entry-state{display:flex;gap:10px;align-items:baseline;margin-top:12px;font-size:13px;color:#5A6E82;flex-wrap:wrap}
+.entry-state b{font-size:14px;color:var(--text)}
+.entry-state.idle{color:#93A3B4}
+.entry-acts{display:flex;gap:10px;margin-top:14px}
+.entry-acts .btn{flex:1;border-radius:13px;padding:12px;font-size:14.5px}
+.entry-done{display:block;width:calc(100% - 28px);margin:2px 14px 22px;padding:14px;border-radius:14px;background:#fff;border:1px solid var(--line);color:#5A6E82;font-size:14px;text-align:center}
+.entry-done b{color:var(--accent)}
+.specbar{background:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:3px}
+.specbar b{font-size:15px}
+.specbar span{font-size:12.5px;color:#7C8EA1}
+.arc-row{display:flex;align-items:center;gap:10px;background:#fff;border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow)}
+.arc-main{flex:1;min-width:0}
+.arc-t{font-size:15px;font-weight:600}
+.arc-s{font-size:12px;color:#7C8EA1;margin-top:3px}
+.arc-acts{display:flex;gap:8px;flex:0 0 auto}
+.arc-acts .btn{padding:8px 12px;font-size:13px;border-radius:10px}

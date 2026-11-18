@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="entry.css">
 </head>
 <body>
 
@@ -35,13 +36,14 @@
   })();
 </script>
 
+<section id="viewHome" class="hidden">
 <header id="topbar">
+  <button class="iconbtn" id="btnEntryBack" aria-label="返回入口">←</button>
   <div class="titles">
-    <h1>隐患随手拍 <span id="offlineBadge" class="badge">检查中…</span></h1>
+    <h1><span id="hdrModule">一般检查</span> <span id="offlineBadge" class="badge">检查中…</span></h1>
     <div class="sub"><span id="hdrUnit">未设置单位</span> · <span id="hdrDate">—</span></div>
   </div>
   <div class="hdr-actions">
-    <button class="iconbtn" id="btnChecks" aria-label="检查列表">☰</button>
     <button class="iconbtn" id="btnMenu" aria-label="更多">⋯</button>
   </div>
 </header>
@@ -63,11 +65,14 @@
   </div>
   <div id="ckEntryWrap">
     <button class="ckentry" id="ckEntry">
-      <span class="ckentry-t">📋 检查清单</span>
+      <span class="ckentry-t">📋 189 条清单</span>
       <span class="ckentry-s" id="ckEntrySub"></span>
       <span class="ckentry-chev">›</span>
       <span class="ckentry-bar"><i id="ckEntryBar"></i></span>
     </button>
+  </div>
+  <div id="specialWrap" class="hidden">
+    <div class="specbar" id="specBar"></div>
   </div>
   <div id="hazardList" class="list"></div>
   <div id="emptyHome" class="empty hidden">还没有拍隐患。<br>点下面的“📷 拍照”，横持手机拍 4:3 照片。</div>
@@ -76,31 +81,35 @@
 <div class="fabbar">
   <button class="btn primary block" id="btnNew">📷 拍照</button>
 </div>
+</section>
 
-<!-- 检查列表 -->
-<section id="viewChecks" class="hidden">
-  <header>
-    <button class="iconbtn" id="btnChecksBack" aria-label="返回">←</button>
-    <div class="titles"><h1>检查</h1><div class="sub" id="checksSub">全部检查</div></div>
+<!-- 入口：三块 -->
+<section id="viewEntry" class="hidden">
+  <header class="entry-hd">
+    <div class="titles">
+      <h1>隐患随手拍 <span id="offlineBadge2" class="badge">检查中…</span></h1>
+      <div class="sub" id="entrySub">选择一种检查方式</div>
+    </div>
     <div class="hdr-actions">
-      <button class="txtbtn" id="btnChecksManage">管理</button>
+      <button class="iconbtn" id="btnEntryMenu" aria-label="更多">⋯</button>
     </div>
   </header>
-  <div class="ck-tabs" id="checksTabs">
-    <button data-f="all" class="on">全部</button>
-    <button data-f="photo">现场</button>
+  <div id="entryList" class="entry-list"></div>
+  <button class="entry-done" id="btnArchiveEntry">已完成 <b id="doneCount">0</b> 份 ›</button>
+</section>
+
+<!-- 归档 -->
+<section id="viewArchive" class="hidden">
+  <header>
+    <button class="iconbtn" id="btnArchiveBack" aria-label="返回">←</button>
+    <div class="titles"><h1>已完成的检查</h1><div class="sub" id="archiveSub"></div></div>
+  </header>
+  <div class="ck-tabs" id="archiveTabs">
+    <button data-f="photo" class="on">一般</button>
     <button data-f="checklist">清单</button>
+    <button data-f="special">专项</button>
   </div>
-  <div class="selbar hidden" id="checkSelBar">
-    <button class="btn small" id="btnCheckSelAll">全选</button>
-    <span id="checkSelCount">已选 0 条</span>
-    <button class="btn small danger" id="btnCheckSelDelete">删除</button>
-    <button class="btn small" id="btnCheckSelDone">取消</button>
-  </div>
-  <div id="checksList" style="padding:4px 14px 120px"></div>
-  <div class="fabbar">
-    <button class="btn primary block" id="btnChecksNew">＋ 新建检查</button>
-  </div>
+  <div id="archiveList" style="padding:4px 14px 40px"></div>
 </section>
 
 <!-- 编辑页 -->
@@ -243,6 +252,15 @@
       <button class="btn primary" id="btnExportPdf">生成</button>
     </div>
   </div>
+  <div class="section hidden" id="expCkSection">
+    <h3>清单记录</h3>
+    <div class="exportrow">
+      <input type="checkbox" class="exp-cb" value="cklist" checked aria-label="选择清单记录">
+      <div class="ico">📋</div>
+      <div class="txt"><b>189 条清单记录（Word）</b><small id="expCkSub">含照片与问题描述，不符合项红底</small></div>
+      <button class="btn primary" id="btnExportCkList">生成</button>
+    </div>
+  </div>
   <div class="section">
     <h3>数据包（给电脑端）</h3>
     <div class="exportrow">
@@ -266,8 +284,6 @@
     <div class="titles"><h1>检查清单</h1><div class="sub" id="ckSub"></div></div>
     <div class="ck-hd-btns">
       <button id="btnCkBatch" class="ckhbtn">批量</button>
-      <button id="btnCkNew" class="ckhbtn">新建</button>
-      <button id="btnCkExport" class="ckhbtn">导出</button>
     </div>
   </header>
   <div class="ck-sum">
