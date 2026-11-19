@@ -143,6 +143,11 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .ck-tabs button{border-radius:11px;padding:9px;background:#F3F6FA;border-color:transparent;font-size:13.5px;font-weight:500}
 .ck-tabs button.on{background:linear-gradient(180deg,#1C74E6,#0F58BC);border-color:transparent;box-shadow:0 4px 12px rgba(22,104,214,.22)}
 .ck-tabs .ck-allsel{padding:9px 12px;background:#fff;border:1px solid var(--line);color:var(--accent);font-weight:600}
+.ck-tabs .ck-batchbtn{
+  flex:0 0 auto;padding:9px 12px;background:#fff;border:1px solid var(--line);
+  color:var(--accent);font-weight:600;font-size:13.5px;border-radius:11px;
+}
+.ck-tabs .ck-batchbtn.on{background:linear-gradient(180deg,#1C74E6,#0F58BC);border-color:transparent;color:#fff}
 .ck-list{padding:8px 14px 34px}
 .ck-group{border-radius:16px;box-shadow:var(--shadow);margin-bottom:12px}
 .ck-head{padding:14px;font-size:15px}
@@ -222,6 +227,9 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .ck-gcard .nm{font-size:15.5px;font-weight:600;flex:1}
 .ck-gcard .meta{font-size:12px;color:#7C8EA1}
 .ck-gcard .chev{color:#B8C4D2;font-size:13px;width:14px;text-align:center}
+.ck-gsel{width:22px;height:22px;border-radius:50%;border:1.5px solid #C9D3DE;display:grid;place-items:center;color:#fff;font-size:13px;flex:0 0 auto}
+.ck-gsel.on{background:var(--accent);border-color:var(--accent)}
+.ck-gsel.lock{background:#EEF1F5;border-color:#DDE3EA}
 .ck-gbody{background:#fff;border-radius:0 0 16px 16px;margin-bottom:10px;box-shadow:var(--shadow);overflow:hidden}
 .ck-gbody .ck-items{border-radius:0;box-shadow:none;background:transparent;margin-top:0}
 .ck-gback{display:flex;align-items:center;gap:6px;color:var(--accent);font-size:14px;padding:8px 4px}

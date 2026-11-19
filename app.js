@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.7.2';
+  var WEB_VERSION = '4.8.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -2291,7 +2291,15 @@
     var g = CK_GROUPS[gi];
     var s = ckGroupStats(gi);
     var open = !!ckMeta.openGroup[gi];
+    var box = '';
+    if (ckMeta.batch) {
+      var its = ckVisibleItems(gi).filter(function (it) { return !ckLocked(it); });
+      var allSel = its.length && its.every(function (it) { return ckSel[it.id]; });
+      box = '<span class="ck-gsel' + (allSel ? ' on' : '') + (its.length ? '' : ' lock') + '"' +
+        ' data-gsel="' + gi + '">' + (allSel ? '✓' : '') + '</span>';
+    }
     return '<button class="ck-gcard' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
+      box +
       '<span class="nm">' + C.escapeHtml(g.name) + '</span>' +
       '<span class="meta">' + s.done + '/' + s.total + (s.ng ? ' · 不符合 ' + s.ng : '') + '</span>' +
       '<span class="chev">' + (open ? '⌃' : '⌄') + '</span></button>' +
@@ -2324,7 +2332,6 @@
       b.classList.toggle('on', b.dataset.f === ckMeta.filter);
     });
     $('viewChecklist').classList.remove('ck-group-view');
-    $('btnCkBatch').textContent = ckMeta.batch ? '完成' : '批量';
 
     var html = '';
     if (ckMeta.filter !== 'all' || !!q) {
@@ -2342,10 +2349,15 @@
 
     $('ckList').innerHTML = html;
     Array.prototype.forEach.call($('ckList').querySelectorAll('.ck-gcard'), function (b) {
-      b.onclick = function () {
+      b.onclick = function (e) {
         var gi = Number(b.dataset.g);
+        // 批量模式下：点区域左侧圆点 = 勾选整区
+        if (ckMeta.batch && e.target.closest('.ck-gsel')) {
+          e.stopPropagation();
+          ckToggleGroupSel(gi);
+          return;
+        }
         ckMeta.openGroup[gi] = !ckMeta.openGroup[gi];
-        if (!ckMeta.openGroup[gi]) ckSel = {};
         renderChecklist();
         if (ckMeta.openGroup[gi]) {
           var body = document.querySelector('.ck-gbody[data-gbody="' + gi + '"]');
@@ -2362,6 +2374,8 @@
     $('ckBulk').classList.toggle('hidden', !ckMeta.batch);
     $('ckBulkN').textContent = selN;
     $('ckBulkOk').classList.toggle('disabled', !selN);
+    $('btnCkBatch').classList.toggle('on', ckMeta.batch);
+    $('btnCkBatch').textContent = ckMeta.batch ? '完成' : '批量';
   }
 
   function ckSetResult(id, r) {
@@ -2380,6 +2394,21 @@
       var ta = document.querySelector('.ck-item[data-id="' + id + '"] .ck-note');
       if (ta) { try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } }
     }
+  }
+
+  // 批量模式：点区域左侧圆点，整区勾选/取消（只处理未锁定项）
+  function ckToggleGroupSel(gi) {
+    var its = ckVisibleItems(gi).filter(function (it) { return !ckLocked(it); });
+    if (!its.length) {
+      toast('该区域没有可批量标记的条目');
+      return;
+    }
+    var all = its.every(function (it) { return ckSel[it.id]; });
+    its.forEach(function (it) {
+      if (all) delete ckSel[it.id];
+      else ckSel[it.id] = true;
+    });
+    renderChecklist();
   }
 
   // 多选模式下勾选/取消一条（锁定的不允许勾选）
@@ -2470,7 +2499,11 @@
     });
     $('btnCkBatch').addEventListener('click', function () {
       ckMeta.batch = !ckMeta.batch;
-      if (!ckMeta.batch) ckSel = {};
+      ckSel = {};
+      if (ckMeta.batch) {
+        // 进入批量：默认展开全部区域，方便逐区勾选
+        CK_GROUPS.forEach(function (g, gi) { ckMeta.openGroup[gi] = true; });
+      }
       renderChecklist();
     });
     $('ckEntry').addEventListener('click', function () {
@@ -2480,7 +2513,7 @@
     $('ckSearch').addEventListener('input', function () { renderChecklist(); });
     $('ckTabs').addEventListener('click', function (e) {
       var b = e.target.closest('button');
-      if (!b) return;
+      if (!b || b.id === 'btnCkBatch' || !b.dataset.f) return;
       ckMeta.filter = b.dataset.f;
       renderChecklist();
     });
