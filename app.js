@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.4.0';
+  var WEB_VERSION = '4.4.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -17,6 +17,7 @@
   var archiveKind = 'photo';
   var chkMulti = false;
   var checkSelMap = {};
+  var wsBack = '';
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -1721,6 +1722,7 @@
     state.batch = b;
     state.moduleKind = kind;
     state.photos = [];
+    state.wsBack = 'checks';   // 从检查列表进来的，返回时回检查列表
     await refreshPhotos();
     showView('home');
   }
@@ -1731,12 +1733,9 @@
     var id = getCurrent(kind);
     var b = id ? await dbGet('batches', id) : null;
     if (!b || isDone(b)) {
-      // 没有进行中 → 空态工作台
-      state.batch = null;
-      state.photos = [];
+      // 没有进行中 → 回该模块的检查列表
       state.moduleKind = kind;
-      showView('home');
-      renderHome();
+      showView('checks');
       return;
     }
     state.batch = b;
@@ -1785,6 +1784,7 @@
       state.batch = null;
       state.photos = [];
       toast('空检查已丢弃');
+      if (state.wsBack === 'checks') { state.wsBack = ''; showView('checks'); return; }
       showView('entry');
       return;
     }
@@ -1798,6 +1798,7 @@
     state.batch = null;
     state.photos = [];
     toast('已完成，可在「已完成」里找回');
+    if (state.wsBack === 'checks') { state.wsBack = ''; showView('checks'); return; }
     showView('entry');
   }
 
@@ -1855,6 +1856,7 @@
     await dbPut('batches', b);
     setCurrent(k, b.id);
     toast('已恢复为进行中');
+    state.wsBack = 'checks';
     openModule(k);
   }
 
@@ -2048,6 +2050,7 @@
     }
     saveBatch();
     backTo = null;
+    var ret = state.setupReturn;
     state.setupReturn = '';
     if (state.editOnly) {
       // 从检查列表进来改基本信息：存完回列表
@@ -2058,6 +2061,7 @@
       toast('检查信息已更新');
       return;
     }
+    if (ret === 'checks') state.wsBack = 'checks';
     showView('home');
     toast('已保存本次检查信息');
   }
@@ -2600,8 +2604,7 @@
       if (view === 'edit') { completeEditing(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
       if (chkMulti) { chkMulti = false; checkSelMap = {}; renderChecks(); return true; }
-      if (view !== 'home') { goUp(); return true; }
-      showView('entry');
+      goUp();
       return true;
     } catch (e) { console.warn('SnapBack', e); }
     return false;
@@ -2632,7 +2635,12 @@
       showView('entry');
       return;
     }
-    if (v === 'home') { showView('entry'); return; }
+    if (v === 'home') {
+      // 从检查列表进来的工作台，返回回检查列表
+      if (state.wsBack === 'checks') { state.wsBack = ''; showView('checks'); return; }
+      showView('entry');
+      return;
+    }
     if (state.batch) showView('home');
     else showView('entry');
   }
