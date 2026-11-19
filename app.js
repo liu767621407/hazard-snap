@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.1.2';
+  var WEB_VERSION = '4.2.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo'
@@ -852,6 +852,7 @@
     $('viewExport').classList.toggle('hidden', name !== 'export');
     $('viewEntry').classList.toggle('hidden', name !== 'entry');
     $('viewArchive').classList.toggle('hidden', name !== 'archive');
+    $('viewChecks').classList.toggle('hidden', name !== 'checks');
     $('viewChecklist').classList.toggle('hidden', name !== 'checklist');
     $('viewHome').classList.toggle('hidden', name !== 'home');
     var fab = document.querySelector('#viewHome .fabbar');
@@ -863,6 +864,7 @@
     if (name === 'home') renderHome();
     if (name === 'entry') renderEntry();
     if (name === 'archive') renderArchive();
+    if (name === 'checks') renderChecks();
   }
 
   // Chrome/PWA 的返回键
@@ -1511,19 +1513,15 @@
           ? '<div class="entry-state"><b>' + C.escapeHtml(nm) + '</b><span>' + C.escapeHtml(st.text) + '</span></div>'
           : '<div class="entry-state idle"><span>未开始</span></div>') +
         '<div class="entry-acts">' +
-        (b
-          ? '<button class="btn primary" data-go="' + m.kind + '">继续</button>'
-          : '<button class="btn primary" data-new="' + m.kind + '">开始 ' + C.escapeHtml(m.name) + '</button>') +
+        '<button class="btn primary" data-list="' + m.kind + '">新建</button>' +
         '</div></div>';
     }).join('');
     $('entryList').innerHTML = html;
     Array.prototype.forEach.call($('entryList').querySelectorAll('.entry-card'), function (card) {
       card.addEventListener('click', function (e) {
-        var goBtn = e.target.closest('[data-go]');
-        var newBtn = e.target.closest('[data-new]');
-        if (newBtn) { e.stopPropagation(); startNewCheck(newBtn.dataset.new); return; }
-        if (goBtn) { e.stopPropagation(); openModule(goBtn.dataset.go); return; }
-        openModule(card.dataset.kind);
+        var listBtn = e.target.closest('[data-list]');
+        if (listBtn) { e.stopPropagation(); openModuleChecks(listBtn.dataset.list); return; }
+        openModuleChecks(card.dataset.kind);
       });
     });
     updateBadge();
@@ -1537,6 +1535,94 @@
       return svgIcon('<path d="M4 5h16v5H4z"/><path d="M6 10v9h12v-9"/><path d="M10 14h4"/>', 22, '#1B5A86');
     }
     return svgIcon('<path d="M4 7h3l2-2h6l2 2h3v12H4z"/><circle cx="12" cy="13" r="3.5"/>', 22, '#1f4e79');
+  }
+
+  // ---------------- 模块内的检查列表 ----------------
+  async function openModuleChecks(kind) {
+    if (!isValidKind(kind)) kind = 'photo';
+    state.moduleKind = kind;
+    showView('checks');
+  }
+
+  async function renderChecks() {
+    var kind = state.moduleKind || 'photo';
+    var curId = getCurrent(kind);
+    var all = (await dbAll('batches')).filter(function (b) { return moduleOf(b) === kind; });
+    all.sort(function (a, b) {
+      var ad = isDone(a) ? (a.done_at || '') : '9';
+      var bd = isDone(b) ? (b.done_at || '') : '9';
+      if (ad !== bd) return ad < bd ? 1 : -1;
+      return ((b.updated || b.created) || '').localeCompare((a.updated || a.created) || '');
+    });
+    var running = all.filter(function (b) { return !isDone(b); });
+    $('checksTitle').textContent = moduleName(kind);
+    $('checksSub').textContent = running.length
+      ? ('进行中 ' + running.length + ' 份 · 共 ' + all.length + ' 份')
+      : ('共 ' + all.length + ' 份');
+    if (!all.length) {
+      $('checksList').innerHTML = '<div class="ck-empty">还没有「' + C.escapeHtml(moduleName(kind)) + '」的检查<br>点右上「＋ 新建」开始</div>';
+      return;
+    }
+    $('checksList').innerHTML = all.map(function (b) {
+      var w = batchWhen(b);
+      var nm = (b.meta.name || '').trim() || (w.date + (w.time ? ' ' + w.time : ''));
+      var done = isDone(b);
+      var isCur = b.id === curId && !done;
+      var st = done ? '已完成' + (b.exported_at ? ' · 已出单' : '') : moduleStats(b).text;
+      return '<div class="chk-card' + (isCur ? ' cur' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
+        '<div class="chk-hd"><div class="chk-tt">' + C.escapeHtml(nm) + '</div>' +
+        (isCur ? '<span class="chk-badge cur">当前</span>' : (done ? '<span class="chk-badge done">已完成</span>' : '<span class="chk-badge run">进行中</span>')) +
+        '</div>' +
+        '<div class="chk-meta"><span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span><span>·</span><span>' + C.escapeHtml(st) + '</span></div>' +
+        '<div class="chk-acts">' +
+        (isCur
+          ? '<button class="btn primary" data-open="' + C.escapeHtml(b.id) + '">继续</button>' +
+            '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>'
+          : (done
+            ? '<button class="btn" data-reopen="' + C.escapeHtml(b.id) + '">重新打开</button>' +
+              '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>'
+            : '<button class="btn" data-open="' + C.escapeHtml(b.id) + '">打开</button>' +
+              '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>')) +
+        '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call($('checksList').querySelectorAll('[data-open]'), function (x) {
+      x.onclick = function () { activateCheck(x.dataset.open); };
+    });
+    Array.prototype.forEach.call($('checksList').querySelectorAll('[data-reopen]'), function (x) {
+      x.onclick = function () { reopenCheck(x.dataset.reopen); };
+    });
+    Array.prototype.forEach.call($('checksList').querySelectorAll('[data-del]'), function (x) {
+      x.onclick = function () { deleteCheck(x.dataset.del); };
+    });
+  }
+
+  // 把某份检查设为该模块的进行中并进入工作台
+  async function activateCheck(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    var kind = moduleOf(b);
+    if (isDone(b)) b.done = false;
+    b.updated = C.isoNow();
+    await dbPut('batches', b);
+    setCurrent(kind, b.id);
+    state.batch = b;
+    state.moduleKind = kind;
+    state.photos = [];
+    await refreshPhotos();
+    showView('home');
+  }
+
+  async function deleteCheck(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    if (!confirm('删除「' + (((b.meta.name || '').trim()) || b.meta.check_date) + '」？\n其中的隐患和照片会一起删除，不能恢复。')) return;
+    var ps = await dbIndex('photos', 'byBatch', id);
+    for (var i = 0; i < ps.length; i++) await dbDel('photos', ps[i].key);
+    await dbDel('batches', id);
+    var kind = moduleOf(b);
+    if (getCurrent(kind) === id) setCurrent(kind, null);
+    toast('已删除');
+    renderChecks();
   }
 
   // ---------------- 进入模块 ----------------
@@ -1561,23 +1647,6 @@
 
   async function startNewCheck(kind) {
     if (!isValidKind(kind)) kind = 'photo';
-    var id = getCurrent(kind);
-    if (id) {
-      var cur = await dbGet('batches', id);
-      if (cur && !isDone(cur)) {
-        var empty = !cur.hazards.length && !Object.keys((cur.checklist && cur.checklist.answers) || {}).length;
-        if (!empty) {
-          if (!confirm('「' + moduleName(kind) + '」还有一份没完成的检查，是否先把它标为完成再新建？\n（取消则继续当前这份）')) {
-            openModule(kind);
-            return;
-          }
-          await finishCheck(true);
-        } else {
-          await dbDel('batches', id);
-          setCurrent(kind, null);
-        }
-      }
-    }
     var b = newBatchMeta(state.cfg || {});
     b.kind = kind;
     b.done = false;
@@ -1595,6 +1664,7 @@
     state.batch = b;
     state.photos = [];
     state.moduleKind = kind;
+    state.setupReturn = 'checks';
     openSetup({
       title: '新建' + moduleName(kind),
       sub: kind === 'checklist' ? '189 条清单，逐项检查'
@@ -2205,6 +2275,8 @@
     $('btnEntryBack').addEventListener('click', function () { showView('entry'); });
     $('btnArchiveEntry').addEventListener('click', function () { openArchive(archiveKind || 'photo'); });
     $('btnArchiveBack').addEventListener('click', function () { showView('entry'); });
+    $('btnChecksBack').addEventListener('click', function () { showView('entry'); });
+    $('btnChecksNew').addEventListener('click', function () { startNewCheck(state.moduleKind || 'photo'); });
     $('btnExportCkList').addEventListener('click', function () { exportOne('cklist'); });
     Array.prototype.forEach.call($('archiveTabs').children, function (b) {
       b.addEventListener('click', function () { archiveKind = b.dataset.f; renderArchive(); });
@@ -2424,6 +2496,16 @@
     backTo = null;
     var v = document.body.dataset.view;
     if (v === 'archive' || v === 'entry') { showView('entry'); return; }
+    if (v === 'settings') {
+      // 新建检查时返回 → 回该模块的检查列表
+      if (state.setupReturn === 'checks' && (state.batch || state.moduleKind)) {
+        state.setupReturn = '';
+        showView('checks');
+        return;
+      }
+      if (state.defaultsMode) { state.defaultsMode = false; showView('entry'); return; }
+    }
+    if (v === 'checks') { showView('entry'); return; }
     if (v === 'home') { showView('entry'); return; }
     if (state.batch) showView('home');
     else showView('entry');

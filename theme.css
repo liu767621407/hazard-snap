@@ -186,6 +186,20 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .chk-s{font-size:12px;color:#7C8EA1;margin-top:3px}
 .type-badge{font-size:10.5px;padding:2px 7px;border-radius:6px;background:#EAF2FB;color:#1B5A86;font-weight:500}
 .type-badge.list{background:#FFF3D6;color:#8A5A00}
+
+/* 检查列表（模块内） */
+#viewChecks{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;padding-bottom:30px}
+.chk-card{background:#fff;border-radius:16px;padding:14px;margin-bottom:10px;box-shadow:var(--shadow);border:1px solid rgba(20,40,70,.05)}
+.chk-card.cur{border-color:rgba(22,104,214,.3);background:linear-gradient(180deg,#fff,#F6FAFF)}
+.chk-hd{display:flex;align-items:flex-start;gap:10px}
+.chk-tt{flex:1;min-width:0;font-size:15.5px;font-weight:600;line-height:1.35;word-break:break-word}
+.chk-badge{font-size:10.5px;padding:2px 7px;border-radius:6px;font-weight:500;flex:0 0 auto}
+.chk-badge.run{background:#E5F7EE;color:#0F7A52}
+.chk-badge.done{background:#EEF3F9;color:#5A6E82}
+.chk-badge.cur{background:#EAF2FB;color:#1B5A86}
+.chk-meta{font-size:12.5px;color:#7C8EA1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chk-acts{display:flex;gap:10px;margin-top:12px}
+.chk-acts .btn{flex:1;padding:10px;font-size:14px;border-radius:11px}
 .editbar{position:fixed;left:0;right:0;bottom:0;z-index:16;display:flex;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(to top,rgba(242,245,249,.99) 65%,rgba(242,245,249,0))}
 .editbar .btn.primary{flex:1}
 .danger-text{color:var(--danger)}
