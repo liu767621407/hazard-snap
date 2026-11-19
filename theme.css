@@ -232,6 +232,7 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .cbtn.ng.on{background:#FDECEA;border-color:#F0A9A0;color:#B3362A}
 .ck-item.sel{background:#F3F8FE}
 .ck-item .ck-cb{width:22px;height:22px;border-radius:7px;border:1.5px solid #C9D3DE;display:grid;place-items:center;color:#fff;flex:0 0 auto}
+.ck-item .ck-cb.lock{background:#EEF1F5;border-color:#DDE3EA;color:#B8C2CD}
 .ck-item.sel .ck-cb{background:var(--accent);border-color:var(--accent)}
 .ck-detail{flex-basis:100%;padding:0 0 4px}
 .ck-detail textarea{margin-top:8px;min-height:64px;font-size:14px}

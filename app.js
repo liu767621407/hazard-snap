@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.7.0';
+  var WEB_VERSION = '4.7.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -2223,11 +2223,12 @@
     }).length;
   }
 
-  // 已拍照或已写问题描述的条目，不能通过多选/全选标为合格
+  // 已标「不符合」、已拍照或已写问题描述的条目，不能通过多选/全选标为合格
   function ckLocked(it) {
     var a = ckAnswers();
-    var note = (a[it.id] && a[it.id].note) || '';
-    return ckHazardCount(it.no) > 0 || note.trim() !== '';
+    var cur = a[it.id] || {};
+    var note = cur.note || '';
+    return cur.r === 'ng' || ckHazardCount(it.no) > 0 || note.trim() !== '';
   }
 
   function ckGroupStats(gi) {
@@ -2267,13 +2268,18 @@
     var sel = !!ckSel[it.id];
     // 标为「不符合」或已有描述/照片时，自动展开问题描述与拍照
     var open = !!ckMeta.openItem[it.id] || r === 'ng' || !!note.trim() || nimg > 0;
+    var lockTxt = nimg > 0 ? ('已拍 ' + nimg + ' 张，不能批量标合格')
+      : (note.trim() ? '已写问题描述，不能批量标合格' : (r === 'ng' ? '已标不符合，不能批量标合格' : ''));
     var detail = '<div class="ck-detail' + (open ? '' : ' hidden') + '">' +
       '<textarea class="ck-note" data-note="' + it.id + '" placeholder="问题描述（选填）">' + C.escapeHtml(note) + '</textarea>' +
       '<div class="ck-dfoot"><button class="btn small" data-photo="' + it.id + '">📷 拍照</button>' +
       (nimg ? '<span>已拍 ' + nimg + ' 张</span>' : '') +
-      (locked ? '<span class="ck-lock">已记录问题</span>' : '') + '</div></div>';
+      (locked ? '<span class="ck-lock"' + (lockTxt ? ' title="' + C.escapeHtml(lockTxt) + '"' : '') + '>不符/已记录 · 不参与批量</span>' : '') +
+      '</div></div>';
     return '<div class="ck-item' + (sel ? ' sel' : '') + '" data-id="' + it.id + '">' +
-      (ckMeta.batch ? '<span class="ck-cb">' + (sel ? '✓' : '') + '</span>' : '') +
+      (ckMeta.batch
+        ? '<span class="ck-cb' + (locked ? ' lock' : '') + '">' + (sel ? '✓' : '') + '</span>'
+        : '') +
       '<div class="ck-q" data-open="' + it.id + '"><b>' + it.no + '</b> ' + C.escapeHtml(it.text) + '</div>' +
       '<div class="ck-acts">' +
       '<button class="cbtn ok' + (r === 'ok' ? ' on' : '') + '" data-r="ok" data-id="' + it.id + '">✓</button>' +
@@ -2371,6 +2377,23 @@
       var ta = document.querySelector('.ck-item[data-id="' + id + '"] .ck-note');
       if (ta) { try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } }
     }
+  }
+
+  // 多选模式下勾选/取消一条（锁定的不允许勾选）
+  function ckToggleSelItem(id) {
+    if (ckSel[id]) {
+      delete ckSel[id];
+      renderChecklist();
+      return;
+    }
+    var it = null;
+    CK_FLAT.forEach(function (x) { if (x.id === id) it = x; });
+    if (it && ckLocked(it)) {
+      toast('该项已标不符合或有照片/描述，不能批量标合格');
+      return;
+    }
+    ckSel[id] = true;
+    renderChecklist();
   }
 
   function ckSelectAllVisible() {
@@ -2471,8 +2494,7 @@
       if (qb) {
         var id = qb.dataset.open;
         if (ckMeta.batch) {
-          if (ckSel[id]) delete ckSel[id]; else ckSel[id] = true;
-          renderChecklist();
+          ckToggleSelItem(id);
           return;
         }
         ckMeta.openItem[id] = !ckMeta.openItem[id];
@@ -2481,9 +2503,7 @@
       }
       var row = e.target.closest('.ck-item');
       if (row && ckMeta.batch && !e.target.closest('.ck-detail')) {
-        var rid = row.dataset.id;
-        if (ckSel[rid]) delete ckSel[rid]; else ckSel[rid] = true;
-        renderChecklist();
+        ckToggleSelItem(row.dataset.id);
       }
     });
     $('ckBulkAll').addEventListener('click', ckSelectAllVisible);
