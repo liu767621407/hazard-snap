@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.7.1';
+  var WEB_VERSION = '4.7.2';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -2314,13 +2314,16 @@
     $('ckSub').innerHTML = '<span>' + C.escapeHtml(m.short_unit || m.unit || '未设置单位') + '</span>' +
       '<span class="dot">·</span><span>' + C.escapeHtml(m.check_date || '') + '</span>' +
       '<span class="dot">·</span><span>已检 ' + st.done + '/' + st.total + '</span>';
-    $('ckNums').innerHTML = '已检 <b>' + st.done + '</b>/' + st.total +
-      ' · 合格 <b>' + st.ok + '</b> · 不符合 <b>' + st.ng + '</b> · 未检 <b>' + (st.total - st.done) + '</b>';
+    $('ckNums').innerHTML =
+      '<span class="k">已检 <b>' + st.done + '</b>/' + st.total + '</span>' +
+      '<span class="k">合格 <b>' + st.ok + '</b></span>' +
+      '<span class="k">不符合 <b>' + st.ng + '</b></span>' +
+      '<span class="k">未检 <b>' + (st.total - st.done) + '</b></span>';
     $('ckBar').style.width = (st.total ? Math.round(st.done / st.total * 100) : 0) + '%';
     Array.prototype.forEach.call($('ckTabs').children, function (b) {
       b.classList.toggle('on', b.dataset.f === ckMeta.filter);
     });
-    $('viewChecklist').classList.toggle('ck-group-view', ckMeta.filter !== 'all');
+    $('viewChecklist').classList.remove('ck-group-view');
     $('btnCkBatch').textContent = ckMeta.batch ? '完成' : '批量';
 
     var html = '';

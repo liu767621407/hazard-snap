@@ -133,8 +133,10 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .ck-sum{padding:14px 16px 12px;border-bottom:0;box-shadow:0 6px 16px rgba(19,32,44,.05);position:relative;z-index:1}
 .ck-bar{height:9px;background:#E5EDF7}
 .ck-bar i{background:linear-gradient(90deg,#0E7C86,#1E9AA6)}
-.ck-nums{gap:16px;font-size:12.5px;margin-top:10px}
+/* 筛选/搜索/统计行在切换筛选时保持可见（原 .ck-group-view 会隐藏，已弃用） */
+.ck-nums{display:flex;gap:10px;font-size:12.5px;margin-top:10px;flex-wrap:nowrap;white-space:nowrap;overflow-x:auto;justify-content:space-between}
 .ck-nums b{font-size:14px}
+.ck-nums .k{color:var(--muted)}
 .ck-search{padding:12px 16px 6px}
 .ck-search input{background:#F4F7FB;border-color:#E6EDF5;border-radius:12px}
 .ck-tabs{padding:10px 16px 12px;gap:8px}
@@ -214,7 +216,6 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .snackbar{position:fixed;left:14px;right:14px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:55;display:flex;align-items:center;gap:12px;background:rgba(19,32,44,.94);color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgba(10,20,32,.3)}
 .snackbar span{flex:1;font-size:13.5px}
 .snackbar button{color:#7FD3FF;font-weight:600;font-size:14px}
-.ck-group-view .ck-search,.ck-group-view .ck-tabs{display:none}
 .ck-gcard{display:flex;align-items:center;gap:10px;width:100%;background:#fff;border-radius:16px;padding:16px 14px;margin-bottom:10px;box-shadow:var(--shadow);text-align:left;transition:border-radius .18s,box-shadow .18s}
 .ck-gcard.open{border-radius:16px 16px 0 0;margin-bottom:0;box-shadow:none;border-bottom:1px solid #F0F4F9}
 .ck-gcard.open .nm{color:var(--accent)}
