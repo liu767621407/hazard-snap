@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.4.1';
+  var WEB_VERSION = '4.5.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -2252,7 +2252,8 @@
     var nimg = ckHazardCount(it.no);
     var locked = ckLocked(it);
     var sel = !!ckSel[it.id];
-    var open = !!ckMeta.openItem[it.id];
+    // 标为「不符合」或已有描述/照片时，自动展开问题描述与拍照
+    var open = !!ckMeta.openItem[it.id] || r === 'ng' || !!note.trim() || nimg > 0;
     var detail = '<div class="ck-detail' + (open ? '' : ' hidden') + '">' +
       '<textarea class="ck-note" data-note="' + it.id + '" placeholder="问题描述（选填）">' + C.escapeHtml(note) + '</textarea>' +
       '<div class="ck-dfoot"><button class="btn small" data-photo="' + it.id + '">📷 拍照</button>' +
@@ -2335,8 +2336,14 @@
     var cur = a[id] || { r: '', note: '' };
     cur.r = (cur.r === r) ? '' : r;
     a[id] = cur;
+    // 点 ✗ 时展开描述框；点 ✓ 时收起（除非已有描述/照片）
+    if (cur.r === 'ng') ckMeta.openItem[id] = true;
     ckSave();
     renderChecklist();
+    if (cur.r === 'ng') {
+      var ta = document.querySelector('.ck-item[data-id="' + id + '"] .ck-note');
+      if (ta) { try { ta.focus({ preventScroll: true }); } catch (e) { ta.focus(); } }
+    }
   }
 
   function ckSelectAllVisible() {
