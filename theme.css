@@ -215,5 +215,21 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .row2{gap:10px}
 .cfgDeadlineHint{color:#7C8EA1}
 
+/* ---------- 隐患卡片滑动删除 ---------- */
+.swipe-wrap{position:relative;overflow:hidden;border-radius:var(--r)}
+.swipe-wrap .card{position:relative;z-index:2;transition:transform .18s ease;background:#fff;will-change:transform}
+.list .swipe-wrap + .swipe-wrap{margin-top:12px}
+.swipe-wrap.no-swipe .card{transform:none !important}
+.swipe-del{
+  position:absolute;top:0;right:0;bottom:0;width:88px;z-index:1;
+  border:0;border-radius:0 var(--r) var(--r) 0;
+  background:linear-gradient(180deg,#E8554A 0%,#C0392B 100%);
+  color:#fff;font-size:15px;font-weight:600;letter-spacing:.5px;
+  display:grid;place-items:center;
+  opacity:0;transition:opacity .16s ease;
+}
+.swipe-wrap.open .swipe-del{opacity:1}
+.swipe-del:active{filter:brightness(.94)}
+
 /* Toast / loading */
 .toast{border-radius:14px;background:rgba(19,32,44,.92);font-size:13.5px;box-shadow:0 8px 24px rgba(10,20,32,.25)}

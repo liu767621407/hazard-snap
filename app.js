@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.1.1';
+  var WEB_VERSION = '4.1.2';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo'
@@ -350,15 +350,18 @@
       var ph = photosOf(h.id).sort(function (a, b) { return a.phase === b.phase ? a.order - b.order : (a.phase === 'before' ? -1 : 1); });
       var before = photosOf(h.id, 'before').length;
       var after = photosOf(h.id, 'after').length;
-      var el = document.createElement('div');
-      el.className = 'card' + (state.selected[h.id] ? ' sel' : '');
+      var wrap = document.createElement('div');
+      wrap.className = 'swipe-wrap' + (state.selecting ? ' no-swipe' : '');
+      wrap.dataset.id = h.id;
+      var card = document.createElement('div');
+      card.className = 'card' + (state.selected[h.id] ? ' sel' : '');
       var thumb = ph.length ? photoUrl(ph[0].thumb) : '';
       var check = state.selecting
         ? '<div class="check">' + (state.selected[h.id] ? '✓' : '') + '</div>' : '';
       var hasCkText = !!(h.tag && h.tag.type === 'checklist' && h.tag.text);
       var descShown = h.desc || (hasCkText ? h.tag.text : '未填写，点击补充');
       var descEmpty = !h.desc && !hasCkText;
-      el.innerHTML = check +
+      card.innerHTML = check +
         '<div class="thumb" style="' + (thumb ? "background-image:url('" + thumb + "')" : '') + '">' +
           (thumb ? '' : '<div class="nophoto">无照片</div>') +
         '</div>' +
@@ -375,10 +378,22 @@
           (h.location ? '<div class="meta">' + C.escapeHtml(h.location) + '</div>' : '') +
         '</div>' +
         (state.selecting ? '' : '<div class="arrow">›</div>');
-      el.addEventListener('click', function () {
-        if (state.selecting) { toggleSelected(h.id); } else { openEdit(h.id); }
+      if (state.selecting) {
+        card.addEventListener('click', function () { toggleSelected(h.id); });
+      } else {
+        bindSwipeRow(wrap, card, h.id);
+      }
+      wrap.appendChild(card);
+      var del = document.createElement('button');
+      del.className = 'swipe-del';
+      del.textContent = '删除';
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeAllSwipe();
+        deleteHazardWithUndo(h.id);
       });
-      list.appendChild(el);
+      wrap.appendChild(del);
+      list.appendChild(wrap);
     });
 
     var n = batch.hazards.filter(function (h) { return h.desc.trim() || photosOf(h.id).length; }).length;
@@ -391,8 +406,122 @@
     renderHeader();
   }
 
-  // ---------------- 管理（多选 / 批量删除） ----------------
+  // ---------------- 隐患卡片：滑动 / 长按删除 ----------------
+  var SWIPE_W = 88;
+  var openSwipe = null;
+
+  function closeAllSwipe(except) {
+    Array.prototype.forEach.call(document.querySelectorAll('.swipe-wrap.open'), function (w) {
+      if (w === except) return;
+      w.classList.remove('open');
+      var c = w.querySelector('.card');
+      if (c) c.style.transform = '';
+    });
+    if (openSwipe && openSwipe !== except) openSwipe = null;
+  }
+
+  function bindSwipeRow(wrap, card, hazardId) {
+    var startX = 0, startY = 0, dx = 0, dy = 0;
+    var dragging = false, decided = false, horizontal = false;
+    var longTimer = null, startAt = 0, suppressUntil = 0;
+    var opened = false;
+
+    function setX(x, animate) {
+      card.style.transition = animate ? 'transform .18s ease' : 'none';
+      card.style.transform = x ? 'translateX(' + x + 'px)' : '';
+    }
+
+    function openRow() {
+      closeAllSwipe(wrap);
+      wrap.classList.add('open');
+      openSwipe = wrap;
+      opened = true;
+      setX(-SWIPE_W, true);
+    }
+
+    function closeRow() {
+      wrap.classList.remove('open');
+      if (openSwipe === wrap) openSwipe = null;
+      opened = false;
+      setX(0, true);
+    }
+
+    function toggleRow() {
+      suppressUntil = Date.now() + 500;
+      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
+      if (opened) closeRow(); else openRow();
+    }
+
+    function cancelLong() { clearTimeout(longTimer); longTimer = null; }
+
+    wrap.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      startAt = Date.now();
+      dx = 0; dy = 0;
+      dragging = true; decided = false; horizontal = false;
+      cancelLong();
+      longTimer = setTimeout(function () {
+        longTimer = null;
+        if (!dragging || decided) return;
+        toggleRow();
+      }, 450);
+    }, { passive: true });
+
+    wrap.addEventListener('touchmove', function (e) {
+      if (!dragging || e.touches.length !== 1) return;
+      dx = e.touches[0].clientX - startX;
+      dy = e.touches[0].clientY - startY;
+      if (!decided) {
+        if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+        decided = true;
+        horizontal = Math.abs(dx) > Math.abs(dy);
+        if (horizontal) cancelLong();
+      }
+      if (!horizontal) return;
+      if (e.cancelable) e.preventDefault();
+      var base = opened ? -SWIPE_W : 0;
+      var x = base + dx;
+      if (x > 0) x = 0;
+      if (x < -SWIPE_W - 24) x = -SWIPE_W - 24;
+      setX(x, false);
+    }, { passive: false });
+
+    wrap.addEventListener('touchend', function () {
+      cancelLong();
+      dragging = false;
+      if (horizontal) {
+        suppressUntil = Date.now() + 400;
+        var base = opened ? -SWIPE_W : 0;
+        var x = base + dx;
+        if (x < -SWIPE_W / 2) openRow(); else closeRow();
+        return;
+      }
+      // 定时器可能被浏览器丢弃：用按住时长兜底
+      if (Date.now() - startAt >= 450) toggleRow();
+    });
+
+    wrap.addEventListener('touchcancel', function () {
+      cancelLong();
+      dragging = false;
+      if (horizontal) { if (opened) setX(-SWIPE_W, true); else setX(0, true); }
+    });
+
+    card.addEventListener('click', function (e) {
+      if (Date.now() < suppressUntil) { e.preventDefault(); e.stopPropagation(); return; }
+      if (opened) { e.preventDefault(); e.stopPropagation(); closeRow(); return; }
+      openEdit(hazardId);
+    });
+
+    card.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      toggleRow();
+    });
+  }
+
   function setSelecting(on) {
+    closeAllSwipe();
     state.selecting = !!on;
     state.selected = {};
     renderHome();
