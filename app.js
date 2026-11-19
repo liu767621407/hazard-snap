@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.2.0';
+  var WEB_VERSION = '4.2.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo'
@@ -379,7 +379,10 @@
         '</div>' +
         (state.selecting ? '' : '<div class="arrow">›</div>');
       if (state.selecting) {
-        card.addEventListener('click', function () { toggleSelected(h.id); });
+        card.addEventListener('click', function () {
+          if (Date.now() < suppressClickUntil) return;
+          toggleSelected(h.id);
+        });
       } else {
         bindSwipeRow(wrap, card, h.id);
       }
@@ -406,9 +409,10 @@
     renderHeader();
   }
 
-  // ---------------- 隐患卡片：滑动 / 长按删除 ----------------
+  // ---------------- 隐患卡片：左滑删除 / 长按多选 ----------------
   var SWIPE_W = 88;
   var openSwipe = null;
+  var suppressClickUntil = 0;
 
   function closeAllSwipe(except) {
     Array.prototype.forEach.call(document.querySelectorAll('.swipe-wrap.open'), function (w) {
@@ -418,6 +422,17 @@
       if (c) c.style.transform = '';
     });
     if (openSwipe && openSwipe !== except) openSwipe = null;
+  }
+
+  // 长按 → 进入多选，并勾选被长按的这条
+  function enterSelectMode(hazardId) {
+    suppressClickUntil = Date.now() + 500;
+    setSelecting(true);
+    if (hazardId) {
+      state.selected[hazardId] = true;
+      renderHome();
+    }
+    toast('已进入多选，点其它条继续勾选');
   }
 
   function bindSwipeRow(wrap, card, hazardId) {
@@ -446,12 +461,6 @@
       setX(0, true);
     }
 
-    function toggleRow() {
-      suppressUntil = Date.now() + 500;
-      if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
-      if (opened) closeRow(); else openRow();
-    }
-
     function cancelLong() { clearTimeout(longTimer); longTimer = null; }
 
     wrap.addEventListener('touchstart', function (e) {
@@ -465,7 +474,8 @@
       longTimer = setTimeout(function () {
         longTimer = null;
         if (!dragging || decided) return;
-        toggleRow();
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
+        enterSelectMode(hazardId);
       }, 450);
     }, { passive: true });
 
@@ -498,8 +508,8 @@
         if (x < -SWIPE_W / 2) openRow(); else closeRow();
         return;
       }
-      // 定时器可能被浏览器丢弃：用按住时长兜底
-      if (Date.now() - startAt >= 450) toggleRow();
+      // 定时器可能被浏览器丢弃：用按住时长兜底 → 进多选
+      if (Date.now() - startAt >= 450) enterSelectMode(hazardId);
     });
 
     wrap.addEventListener('touchcancel', function () {
@@ -514,9 +524,10 @@
       openEdit(hazardId);
     });
 
+    // 桌面端：右键进入多选
     card.addEventListener('contextmenu', function (e) {
       e.preventDefault();
-      toggleRow();
+      enterSelectMode(hazardId);
     });
   }
 
