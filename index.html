@@ -37,13 +37,13 @@
 </script>
 
 <section id="viewHome" class="hidden">
-<header id="topbar">
-  <span class="hd-spacer"></span>
-  <div class="titles">
-    <h1><span id="hdrModule">一般检查</span> <span id="offlineBadge" class="badge">检查中…</span></h1>
-    <div class="sub"><span id="hdrUnit">未设置单位</span> · <span id="hdrDate">—</span></div>
+<header id="topbar" class="page-hd">
+  <div class="hd-main">
+    <h1 id="hdrModule">一般检查</h1>
+    <div class="sub"><span id="hdrUnit">未设置单位</span><span class="dot">·</span><span id="hdrDate">—</span></div>
   </div>
   <div class="hdr-actions">
+    <span id="offlineBadge" class="badge">…</span>
     <button class="iconbtn" id="btnMenu" aria-label="更多">⋯</button>
   </div>
 </header>
@@ -85,12 +85,13 @@
 
 <!-- 入口：三块 -->
 <section id="viewEntry" class="hidden">
-  <header class="entry-hd">
-    <div class="titles">
-      <h1>隐患随手拍 <span id="offlineBadge2" class="badge">检查中…</span></h1>
+  <header class="entry-hd page-hd">
+    <div class="hd-main">
+      <h1>隐患随手拍</h1>
       <div class="sub" id="entrySub">选择一种检查方式</div>
     </div>
     <div class="hdr-actions">
+      <span id="offlineBadge2" class="badge">…</span>
       <button class="iconbtn" id="btnEntryMenu" aria-label="更多">⋯</button>
     </div>
   </header>
@@ -100,11 +101,13 @@
 
 <!-- 检查列表（某模块下的所有检查） -->
 <section id="viewChecks" class="hidden">
-  <header>
-    <span class="hd-spacer"></span>
-    <div class="titles"><h1 id="checksTitle">检查列表</h1><div class="sub" id="checksSub"></div></div>
+  <header class="page-hd">
+    <div class="hd-main">
+      <h1 id="checksTitle">检查列表</h1>
+      <div class="sub" id="checksSub"></div>
+    </div>
     <div class="hdr-actions">
-      <button class="txtbtn" id="btnChecksNew">＋ 新建</button>
+      <button class="btn-hd" id="btnChecksNew">＋ 新建</button>
     </div>
   </header>
   <div class="selbar hidden" id="checkSelBar">
@@ -118,9 +121,11 @@
 
 <!-- 归档 -->
 <section id="viewArchive" class="hidden">
-  <header>
-    <span class="hd-spacer"></span>
-    <div class="titles"><h1>已完成的检查</h1><div class="sub" id="archiveSub"></div></div>
+  <header class="page-hd">
+    <div class="hd-main">
+      <h1>已完成</h1>
+      <div class="sub" id="archiveSub"></div>
+    </div>
   </header>
   <div class="ck-tabs" id="archiveTabs">
     <button data-f="photo" class="on">一般</button>
@@ -132,9 +137,11 @@
 
 <!-- 编辑页 -->
 <section id="viewEdit" class="hidden">
-  <header>
-    <span class="hd-spacer"></span>
-    <div class="titles"><h1 id="editTitle">新隐患</h1><div class="sub" id="editSub"></div></div>
+  <header class="page-hd">
+    <div class="hd-main">
+      <h1 id="editTitle">新隐患</h1>
+      <div class="sub" id="editSub"></div>
+    </div>
   </header>
 
   <div class="tabs" id="phaseTabs">
@@ -198,9 +205,11 @@
 
 <!-- 新建检查 / 本次检查信息 -->
 <section id="viewSettings" class="hidden" style="position:fixed;inset:0;z-index:35;background:var(--bg);overflow-y:auto;padding-bottom:40px">
-  <header>
-    <span class="hd-spacer"></span>
-    <div class="titles"><h1 id="setupTitle">新建检查</h1><div class="sub" id="setupSub">先填检查信息，再逐条拍隐患</div></div>
+  <header class="page-hd">
+    <div class="hd-main">
+      <h1 id="setupTitle">新建检查</h1>
+      <div class="sub" id="setupSub">先填检查信息，再逐条拍隐患</div>
+    </div>
   </header>
   <div class="section">
     <h3>检查名称（可空）</h3>
@@ -244,9 +253,11 @@
 
 <!-- 导出 -->
 <section id="viewExport" class="hidden">
-  <header>
-    <span class="hd-spacer"></span>
-    <div class="titles"><h1>导出 / 分享</h1><div class="sub" id="exportSub">生成后可直接发微信、QQ、邮件或存文件</div></div>
+  <header class="page-hd">
+    <div class="hd-main">
+      <h1>导出 / 分享</h1>
+      <div class="sub" id="exportSub">生成后可直接发微信、QQ、邮件或存文件</div>
+    </div>
   </header>
   <div class="section">
     <h3>整改通知单</h3>
@@ -296,11 +307,13 @@
 
 <!-- 清单化检查（189 条） -->
 <section id="viewChecklist" class="hidden">
-  <header>
-    <span class="hd-spacer"></span>
-    <div class="titles"><h1>检查清单</h1><div class="sub" id="ckSub"></div></div>
-    <div class="ck-hd-btns">
-      <button id="btnCkBatch" class="ckhbtn">批量</button>
+  <header class="page-hd">
+    <div class="hd-main">
+      <h1 id="ckTitle">检查清单</h1>
+      <div class="sub" id="ckSub"></div>
+    </div>
+    <div class="hdr-actions">
+      <button class="btn-hd" id="btnCkBatch">批量</button>
     </div>
   </header>
   <div class="ck-sum">

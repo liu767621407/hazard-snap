@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.5.1';
+  var WEB_VERSION = '4.6.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -287,21 +287,31 @@
   }
 
   function renderHeader() {
-    var cfg = state.cfg;
+    var cfg = state.cfg || {};
     var kind = state.batch ? moduleOf(state.batch) : (state.moduleKind || 'photo');
     $('hdrModule').textContent = moduleName(kind);
-    $('hdrUnit').textContent = (state.batch && state.batch.meta.unit) || cfg.unit || '未设置单位';
-    var b0 = state.batch;
-    var nm = b0 ? (b0.meta.name || '').trim() : '';
-    $('hdrDate').textContent = b0 ? ((nm || b0.meta.check_date) + ' · ' + b0.hazards.length + ' 条') : '';
-    if (state.batch && state.batch.meta.check_type) {
-      var spec = state.batch.meta.check_type.indexOf('专项') >= 0;
-      $('hdrModule').textContent = spec
-        ? ('专项检查 · ' + ((state.batch.meta.special_name || '').trim() || '未命名'))
-        : moduleName(kind);
+    if (!state.batch) {
+      $('hdrUnit').textContent = cfg.unit || '未设置单位';
+      $('hdrDate').textContent = '还没有进行中的检查';
+      return;
     }
+    var m = state.batch.meta || {};
+    $('hdrUnit').textContent = m.short_unit || m.unit || cfg.unit || '未设置单位';
+    var tail = '';
+    if (kind === 'special') {
+      var sp = (m.special_name || '').trim();
+      $('hdrModule').textContent = sp
+        ? (moduleName(kind) + ' · ' + sp)
+        : moduleName(kind);
+      tail = state.batch.hazards.length + ' 条隐患';
+    } else if (kind === 'checklist') {
+      var s = ckStats();
+      tail = '已检 ' + s.done + '/' + s.total;
+    } else {
+      tail = state.batch.hazards.length + ' 条隐患';
+    }
+    $('hdrDate').textContent = (m.check_date || '') + ' · ' + tail;
   }
-
   function renderEmptyWorkspace(kind) {
     var m = MODULE_BY_KIND[kind] || MODULES[0];
     $('hazardList').innerHTML = '<div class="empty">「' + C.escapeHtml(m.name) + '」还没有进行中的检查<br>' +
@@ -674,7 +684,9 @@
     state.editing = { hazardId: hazardId, phase: 'before' };
     var idx = state.batch.hazards.indexOf(h) + 1;
     $('editTitle').textContent = '隐患 ' + idx;
-    $('editSub').textContent = (state.batch.meta.short_unit || state.batch.meta.unit || '') + ' · ' + state.batch.meta.check_date;
+    var m2 = state.batch.meta;
+    $('editSub').innerHTML = '<span>' + C.escapeHtml(m2.short_unit || m2.unit || '未设置单位') + '</span>' +
+      '<span class="dot">·</span><span>' + C.escapeHtml(m2.check_date || '') + '</span>';
     $('phaseTabs').classList.remove('hidden');
     Array.prototype.forEach.call($('phaseTabs').children, function (b) {
       b.classList.toggle('on', b.dataset.phase === 'before');
@@ -1749,8 +1761,8 @@
     var b = newBatchMeta(state.cfg || {});
     b.kind = kind;
     b.done = false;
-    b.special_name = kind === 'special' ? (state.cfg.special_name || '') : '';
-    if (kind === 'special') b.meta.check_type = '专项检查';
+    b.meta.check_type = kind === 'special' ? '专项检查' : '一般检查';
+    b.meta.special_name = kind === 'special' ? (state.cfg.special_name || '') : '';
     if (kind === 'checklist') {
       var last = await lastChecklistWithAnswers();
       if (last && confirm('要复制上一份清单的结果和描述吗？\n（' + (((last.batch.meta.name || '').trim()) || last.batch.meta.check_date) +
@@ -2272,7 +2284,11 @@
     var st = ckStats();
     var q = ($('ckSearch').value || '').trim();
     CK_FLAT.forEach(function (it) { if (ckSel[it.id] && ckLocked(it)) delete ckSel[it.id]; });
-    $('ckSub').textContent = (state.batch.meta.short_unit || state.batch.meta.unit || '') + ' · ' + state.batch.meta.check_date;
+    var m = state.batch.meta;
+    $('ckTitle').textContent = '检查清单';
+    $('ckSub').innerHTML = '<span>' + C.escapeHtml(m.short_unit || m.unit || '未设置单位') + '</span>' +
+      '<span class="dot">·</span><span>' + C.escapeHtml(m.check_date || '') + '</span>' +
+      '<span class="dot">·</span><span>已检 ' + st.done + '/' + st.total + '</span>';
     $('ckNums').innerHTML = '已检 <b>' + st.done + '</b>/' + st.total +
       ' · 合格 <b>' + st.ok + '</b> · 不符合 <b>' + st.ng + '</b> · 未检 <b>' + (st.total - st.done) + '</b>';
     $('ckBar').style.width = (st.total ? Math.round(st.done / st.total * 100) : 0) + '%';
