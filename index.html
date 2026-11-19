@@ -326,9 +326,12 @@
   </div>
   <div id="ckList" class="ck-list"></div>
   <div class="ck-bulk hidden" id="ckBulk">
-    <button class="btn ghost" id="ckBulkAll">全选</button>
-    <button class="btn primary" id="ckBulkOk">标为合格（<b id="ckBulkN">0</b>）</button>
-    <button class="btn ghost" id="ckBulkClear">取消</button>
+    <div class="ckb-info"><b id="ckBulkN">0</b><span>项待标为合格</span></div>
+    <div class="ckb-acts">
+      <button class="ckb-btn" id="ckBulkAll">全选</button>
+      <button class="ckb-btn primary" id="ckBulkOk">标为合格</button>
+      <button class="ckb-btn" id="ckBulkClear">退出</button>
+    </div>
   </div>
 </section>
 

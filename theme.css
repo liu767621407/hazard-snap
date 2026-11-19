@@ -161,7 +161,6 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .ck-act .ng.on{background:#FDECEA;border-color:#F2B8B1;color:#B3362A}
 .ck-act .ph{background:#F4F8FD;color:#52657A}
 .ck-note{border-radius:11px;background:#FFFBFB;border-color:#F0D6D2;min-height:56px}
-.ck-bulk{background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(10,20,32,.16)}
 
 /* 导出页多选 */
 .exp-cb{width:21px;height:21px;flex:0 0 auto;accent-color:#1668D6;margin:0}
@@ -299,6 +298,33 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
   font-size:13px;padding:7px 12px;border-radius:10px;white-space:nowrap;
 }
 .btn-hd:active{background:rgba(255,255,255,.24)}
+
+/* ---------- 批量浮条（重做） ---------- */
+.ck-bulk{
+  position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:20;display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-radius:18px;
+  background:rgba(255,255,255,.97);backdrop-filter:blur(12px);
+  box-shadow:0 10px 30px rgba(10,20,32,.18),0 0 0 1px rgba(20,40,70,.05);
+  animation:ckbIn .2s ease;
+}
+@keyframes ckbIn{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+.ck-bulk .ckb-info{display:flex;align-items:baseline;gap:5px;flex:0 0 auto;padding-left:4px}
+.ck-bulk .ckb-info b{font-size:19px;font-weight:700;color:var(--accent);line-height:1}
+.ck-bulk .ckb-info span{font-size:12px;color:#7C8EA1;white-space:nowrap}
+.ck-bulk .ckb-acts{display:flex;align-items:center;gap:8px;margin-left:auto}
+.ckb-btn{
+  border:1px solid #E3EAF3;background:#fff;color:#42566A;
+  font-size:13.5px;padding:9px 12px;border-radius:11px;white-space:nowrap;
+}
+.ckb-btn:active{background:#F5F8FC}
+.ckb-btn.primary{
+  border:0;color:#fff;font-weight:600;padding:10px 16px;
+  background:linear-gradient(180deg,#1C74E6,#0F58BC);
+  box-shadow:0 6px 16px rgba(22,104,214,.26);
+}
+.ckb-btn.primary.disabled{opacity:.45;box-shadow:none}
+.cklist-batchpad{padding-bottom:96px}
 
 /* Toast / loading */
 .toast{border-radius:14px;background:rgba(19,32,44,.92);font-size:13.5px;box-shadow:0 8px 24px rgba(10,20,32,.25)}

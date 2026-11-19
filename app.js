@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.8.0';
+  var WEB_VERSION = '4.8.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -2348,6 +2348,7 @@
     }
 
     $('ckList').innerHTML = html;
+    $('ckList').classList.toggle('cklist-batchpad', ckMeta.batch);
     Array.prototype.forEach.call($('ckList').querySelectorAll('.ck-gcard'), function (b) {
       b.onclick = function (e) {
         var gi = Number(b.dataset.g);
@@ -2500,10 +2501,7 @@
     $('btnCkBatch').addEventListener('click', function () {
       ckMeta.batch = !ckMeta.batch;
       ckSel = {};
-      if (ckMeta.batch) {
-        // 进入批量：默认展开全部区域，方便逐区勾选
-        CK_GROUPS.forEach(function (g, gi) { ckMeta.openGroup[gi] = true; });
-      }
+      // 进入批量只切换选择模式，不展开/收起区域
       renderChecklist();
     });
     $('ckEntry').addEventListener('click', function () {
