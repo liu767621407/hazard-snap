@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.5.0';
+  var WEB_VERSION = '4.5.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -1593,14 +1593,11 @@
         '</div>' +
         '<div class="chk-meta"><span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span><span>·</span><span>' + C.escapeHtml(st) + '</span></div>' +
         '<div class="chk-acts">' +
-        (isCur
-          ? '<button class="btn primary" data-open="' + C.escapeHtml(b.id) + '">继续</button>' +
-            '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>'
-          : (done
-            ? '<button class="btn" data-reopen="' + C.escapeHtml(b.id) + '">重新打开</button>' +
-              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>'
-            : '<button class="btn" data-open="' + C.escapeHtml(b.id) + '">打开</button>' +
-              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>')) +
+        (done
+          ? '<button class="btn" data-reopen="' + C.escapeHtml(b.id) + '">重新打开</button>' +
+            '<button class="btn ghost" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>'
+          : '<button class="btn ghost" data-edit="' + C.escapeHtml(b.id) + '">编辑信息</button>') +
+        '<span class="chk-go">' + (done ? '查看' : '进入') + ' ›</span>' +
         '</div></div>';
     }).join('');
     $('viewChecks').classList.toggle('multi', chkMulti);
@@ -1609,31 +1606,30 @@
     Array.prototype.forEach.call($('checksList').querySelectorAll('.chk-card'), function (card) {
       bindCheckLongPress(card, card.dataset.id);
     });
-    Array.prototype.forEach.call($('checksList').querySelectorAll('[data-open]'), function (x) {
-      x.onclick = function () { activateCheck(x.dataset.open); };
-    });
     Array.prototype.forEach.call($('checksList').querySelectorAll('[data-reopen]'), function (x) {
-      x.onclick = function () { reopenCheck(x.dataset.reopen); };
+      x.onclick = function (e) { e.stopPropagation(); reopenCheck(x.dataset.reopen); };
     });
     Array.prototype.forEach.call($('checksList').querySelectorAll('[data-edit]'), function (x) {
-      x.onclick = function () { editCheckInfo(x.dataset.edit); };
+      x.onclick = function (e) { e.stopPropagation(); editCheckInfo(x.dataset.edit); };
     });
   }
 
-  // 检查卡片：长按进入多选
+  // 检查卡片：长按进入多选；单击进入下一页
   function bindCheckLongPress(card, id) {
-    var timer = null, startAt = 0, moved = false, suppressUntil = 0;
+    var timer = null, startAt = 0, moved = false, suppressUntil = 0, longHandled = false;
     card.addEventListener('touchstart', function (e) {
       if (e.touches.length !== 1) return;
       var sx = e.touches[0].clientX, sy = e.touches[0].clientY;
       startAt = Date.now();
       moved = false;
+      longHandled = false;
       clearTimeout(timer);
       timer = setTimeout(function () {
         timer = null;
         if (moved) return;
         if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
-        suppressUntil = Date.now() + 500;
+        suppressUntil = Date.now() + 600;
+        longHandled = true;
         enterCheckMulti(id);
       }, 450);
       card.addEventListener('touchmove', function onMove(ev) {
@@ -1649,15 +1645,19 @@
     card.addEventListener('touchend', function () {
       clearTimeout(timer);
       timer = null;
-      if (!moved && Date.now() - startAt >= 450 && Date.now() > suppressUntil) enterCheckMulti(id);
+      if (!moved && !longHandled && Date.now() - startAt >= 450) {
+        suppressUntil = Date.now() + 600;
+        longHandled = true;
+        enterCheckMulti(id);
+      }
     });
     card.addEventListener('touchcancel', function () { clearTimeout(timer); timer = null; });
     card.addEventListener('click', function (e) {
-      if (Date.now() < suppressUntil) { e.preventDefault(); e.stopPropagation(); return; }
-      if (!chkMulti) return;
-      if (e.target.closest('.chk-acts')) return;
-      e.preventDefault();
-      toggleCheckSel(id);
+      if (Date.now() < suppressUntil) { e.preventDefault(); return; }
+      if (e.target.closest('button')) return;        // 卡片内按钮各自处理
+      if (chkMulti) { e.preventDefault(); toggleCheckSel(id); return; }
+      var done = !!card.querySelector('[data-reopen]');
+      if (done) reopenCheck(id); else activateCheck(id);
     });
     card.addEventListener('contextmenu', function (e) {
       e.preventDefault();
