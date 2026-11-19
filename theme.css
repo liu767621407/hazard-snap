@@ -198,8 +198,14 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .chk-badge.done{background:#EEF3F9;color:#5A6E82}
 .chk-badge.cur{background:#EAF2FB;color:#1B5A86}
 .chk-meta{font-size:12.5px;color:#7C8EA1;margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.chk-acts{display:flex;gap:8px;margin-top:12px}
+.chk-acts{display:flex;gap:10px;margin-top:12px}
 .chk-acts .btn{flex:1;padding:10px;font-size:14px;border-radius:11px;min-width:0}
+.chk-card.sel{background:#F3F8FE;box-shadow:inset 3px 0 0 var(--accent)}
+.chk-card.checked{background:#F3F8FE;border-color:rgba(22,104,214,.45)}
+.chk-cbx{width:22px;height:22px;border-radius:50%;border:1.5px solid #C9D3DE;flex:0 0 auto;display:grid;place-items:center;color:#fff;font-size:13px;margin-top:2px}
+.chk-cbx.on{background:var(--accent);border-color:var(--accent)}
+#viewChecks.multi .chk-acts{display:none}
+#viewChecks .selbar{margin:12px 14px 4px;box-shadow:0 6px 18px rgba(19,32,44,.1)}
 .editbar{position:fixed;left:0;right:0;bottom:0;z-index:16;display:flex;gap:10px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:linear-gradient(to top,rgba(242,245,249,.99) 65%,rgba(242,245,249,0))}
 .editbar .btn.primary{flex:1}
 .danger-text{color:var(--danger)}

@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.3.1';
+  var WEB_VERSION = '4.4.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -15,6 +15,8 @@
   var quickTimer = null;
   var backTo = null;
   var archiveKind = 'photo';
+  var chkMulti = false;
+  var checkSelMap = {};
 
   function hasUpdateBridge() {
     try { return !!(window.SnapAndroid && window.SnapAndroid.checkUpdate); } catch (e) { return false; }
@@ -1581,37 +1583,118 @@
       var done = isDone(b);
       var isCur = b.id === curId && !done;
       var st = done ? '已完成' + (b.exported_at ? ' · 已出单' : '') : moduleStats(b).text;
-      return '<div class="chk-card' + (isCur ? ' cur' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
-        '<div class="chk-hd"><div class="chk-tt">' + C.escapeHtml(nm) + '</div>' +
+      var checked = !!(checkSelMap[b.id]);
+      return '<div class="chk-card' + (isCur ? ' cur' : '') + (chkMulti ? ' checked' : '') + '" data-id="' + C.escapeHtml(b.id) + '">' +
+        '<div class="chk-hd">' +
+        (chkMulti ? '<span class="chk-cbx' + (checked ? ' on' : '') + '">' + (checked ? '✓' : '') + '</span>' : '') +
+        '<div class="chk-tt">' + C.escapeHtml(nm) + '</div>' +
         (isCur ? '<span class="chk-badge cur">当前</span>' : (done ? '<span class="chk-badge done">已完成</span>' : '<span class="chk-badge run">进行中</span>')) +
         '</div>' +
         '<div class="chk-meta"><span>' + C.escapeHtml(w.date) + (w.time ? ' ' + C.escapeHtml(w.time) : '') + '</span><span>·</span><span>' + C.escapeHtml(st) + '</span></div>' +
         '<div class="chk-acts">' +
         (isCur
           ? '<button class="btn primary" data-open="' + C.escapeHtml(b.id) + '">继续</button>' +
-            '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>' +
-            '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>'
+            '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>'
           : (done
             ? '<button class="btn" data-reopen="' + C.escapeHtml(b.id) + '">重新打开</button>' +
-              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>' +
-              '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>'
+              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>'
             : '<button class="btn" data-open="' + C.escapeHtml(b.id) + '">打开</button>' +
-              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>' +
-              '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>')) +
+              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>')) +
         '</div></div>';
     }).join('');
+    $('viewChecks').classList.toggle('multi', chkMulti);
+    $('checkSelBar').classList.toggle('hidden', !chkMulti);
+    $('checkSelCount').textContent = '已选 ' + Object.keys(checkSelMap).length + ' 份';
+    Array.prototype.forEach.call($('checksList').querySelectorAll('.chk-card'), function (card) {
+      bindCheckLongPress(card, card.dataset.id);
+    });
     Array.prototype.forEach.call($('checksList').querySelectorAll('[data-open]'), function (x) {
       x.onclick = function () { activateCheck(x.dataset.open); };
     });
     Array.prototype.forEach.call($('checksList').querySelectorAll('[data-reopen]'), function (x) {
       x.onclick = function () { reopenCheck(x.dataset.reopen); };
     });
-    Array.prototype.forEach.call($('checksList').querySelectorAll('[data-del]'), function (x) {
-      x.onclick = function () { deleteCheck(x.dataset.del); };
-    });
     Array.prototype.forEach.call($('checksList').querySelectorAll('[data-edit]'), function (x) {
       x.onclick = function () { editCheckInfo(x.dataset.edit); };
     });
+  }
+
+  // 检查卡片：长按进入多选
+  function bindCheckLongPress(card, id) {
+    var timer = null, startAt = 0, moved = false, suppressUntil = 0;
+    card.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      var sx = e.touches[0].clientX, sy = e.touches[0].clientY;
+      startAt = Date.now();
+      moved = false;
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        if (moved) return;
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (err) {} }
+        suppressUntil = Date.now() + 500;
+        enterCheckMulti(id);
+      }, 450);
+      card.addEventListener('touchmove', function onMove(ev) {
+        if (ev.touches.length !== 1) return;
+        if (Math.abs(ev.touches[0].clientX - sx) > 8 || Math.abs(ev.touches[0].clientY - sy) > 8) {
+          moved = true;
+          clearTimeout(timer);
+          timer = null;
+          card.removeEventListener('touchmove', onMove);
+        }
+      }, { passive: true });
+    }, { passive: true });
+    card.addEventListener('touchend', function () {
+      clearTimeout(timer);
+      timer = null;
+      if (!moved && Date.now() - startAt >= 450 && Date.now() > suppressUntil) enterCheckMulti(id);
+    });
+    card.addEventListener('touchcancel', function () { clearTimeout(timer); timer = null; });
+    card.addEventListener('click', function (e) {
+      if (Date.now() < suppressUntil) { e.preventDefault(); e.stopPropagation(); return; }
+      if (!chkMulti) return;
+      if (e.target.closest('.chk-acts')) return;
+      e.preventDefault();
+      toggleCheckSel(id);
+    });
+    card.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      enterCheckMulti(id);
+    });
+  }
+
+  function enterCheckMulti(id) {
+    chkMulti = true;
+    checkSelMap = {};
+    if (id) checkSelMap[id] = true;
+    renderChecks();
+  }
+
+  function toggleCheckSel(id) {
+    if (checkSelMap[id]) delete checkSelMap[id];
+    else checkSelMap[id] = true;
+    if (!Object.keys(checkSelMap).length) { chkMulti = false; }
+    renderChecks();
+  }
+
+  async function deleteCheckedChecks() {
+    var ids = Object.keys(checkSelMap);
+    if (!ids.length) { toast('请选择要删除的检查'); return; }
+    if (!confirm('删除选中的 ' + ids.length + ' 份检查？\n其中的隐患和照片会一起删除，不能恢复。')) return;
+    for (var i = 0; i < ids.length; i++) {
+      var b = await dbGet('batches', ids[i]);
+      if (!b) continue;
+      var ps = await dbIndex('photos', 'byBatch', ids[i]);
+      for (var j = 0; j < ps.length; j++) await dbDel('photos', ps[j].key);
+      await dbDel('batches', ids[i]);
+      var k = moduleOf(b);
+      if (getCurrent(k) === ids[i]) setCurrent(k, null);
+    }
+    toast('已删除 ' + ids.length + ' 份检查');
+    checkSelMap = {};
+    chkMulti = false;
+    renderChecks();
   }
 
   // 从检查列表编辑某份检查的基本信息（不改“当前”归属）
@@ -1640,19 +1723,6 @@
     state.photos = [];
     await refreshPhotos();
     showView('home');
-  }
-
-  async function deleteCheck(id) {
-    var b = await dbGet('batches', id);
-    if (!b) return;
-    if (!confirm('删除「' + (((b.meta.name || '').trim()) || b.meta.check_date) + '」？\n其中的隐患和照片会一起删除，不能恢复。')) return;
-    var ps = await dbIndex('photos', 'byBatch', id);
-    for (var i = 0; i < ps.length; i++) await dbDel('photos', ps[i].key);
-    await dbDel('batches', id);
-    var kind = moduleOf(b);
-    if (getCurrent(kind) === id) setCurrent(kind, null);
-    toast('已删除');
-    renderChecks();
   }
 
   // ---------------- 进入模块 ----------------
@@ -2312,6 +2382,19 @@
     $('btnEntryMenu').addEventListener('click', openEntryMenu);
     $('btnArchiveEntry').addEventListener('click', function () { openArchive(archiveKind || 'photo'); });
     $('btnChecksNew').addEventListener('click', function () { startNewCheck(state.moduleKind || 'photo'); });
+    $('btnCheckSelAll').addEventListener('click', function () {
+      var all = Array.prototype.slice.call($('checksList').querySelectorAll('.chk-card'));
+      var every = all.length && all.every(function (c) { return checkSelMap[c.dataset.id]; });
+      checkSelMap = {};
+      if (!every) all.forEach(function (c) { checkSelMap[c.dataset.id] = true; });
+      renderChecks();
+    });
+    $('btnCheckSelDelete').addEventListener('click', deleteCheckedChecks);
+    $('btnCheckSelDone').addEventListener('click', function () {
+      chkMulti = false;
+      checkSelMap = {};
+      renderChecks();
+    });
     $('btnExportCkList').addEventListener('click', function () { exportOne('cklist'); });
     Array.prototype.forEach.call($('archiveTabs').children, function (b) {
       b.addEventListener('click', function () { archiveKind = b.dataset.f; renderArchive(); });
@@ -2516,6 +2599,7 @@
       if (view === 'entry') return false;
       if (view === 'edit') { completeEditing(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
+      if (chkMulti) { chkMulti = false; checkSelMap = {}; renderChecks(); return true; }
       if (view !== 'home') { goUp(); return true; }
       showView('entry');
       return true;
@@ -2543,7 +2627,11 @@
       }
       if (state.defaultsMode) { state.defaultsMode = false; showView('entry'); return; }
     }
-    if (v === 'checks') { showView('entry'); return; }
+    if (v === 'checks') {
+      if (chkMulti) { chkMulti = false; checkSelMap = {}; renderChecks(); return; }
+      showView('entry');
+      return;
+    }
     if (v === 'home') { showView('entry'); return; }
     if (state.batch) showView('home');
     else showView('entry');
