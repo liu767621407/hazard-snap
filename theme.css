@@ -215,9 +215,14 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .snackbar span{flex:1;font-size:13.5px}
 .snackbar button{color:#7FD3FF;font-weight:600;font-size:14px}
 .ck-group-view .ck-search,.ck-group-view .ck-tabs{display:none}
-.ck-gcard{display:flex;align-items:center;gap:10px;width:100%;background:#fff;border-radius:16px;padding:16px 14px;margin-bottom:10px;box-shadow:var(--shadow);text-align:left}
+.ck-gcard{display:flex;align-items:center;gap:10px;width:100%;background:#fff;border-radius:16px;padding:16px 14px;margin-bottom:10px;box-shadow:var(--shadow);text-align:left;transition:border-radius .18s,box-shadow .18s}
+.ck-gcard.open{border-radius:16px 16px 0 0;margin-bottom:0;box-shadow:none;border-bottom:1px solid #F0F4F9}
+.ck-gcard.open .nm{color:var(--accent)}
 .ck-gcard .nm{font-size:15.5px;font-weight:600;flex:1}
 .ck-gcard .meta{font-size:12px;color:#7C8EA1}
+.ck-gcard .chev{color:#B8C4D2;font-size:13px;width:14px;text-align:center}
+.ck-gbody{background:#fff;border-radius:0 0 16px 16px;margin-bottom:10px;box-shadow:var(--shadow);overflow:hidden}
+.ck-gbody .ck-items{border-radius:0;box-shadow:none;background:transparent;margin-top:0}
 .ck-gback{display:flex;align-items:center;gap:6px;color:var(--accent);font-size:14px;padding:8px 4px}
 .ck-item{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid #F0F4F8}
 .ck-item .ck-q{flex:1;min-width:0;font-size:14.5px;line-height:1.5}

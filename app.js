@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.6.0';
+  var WEB_VERSION = '4.7.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo',
@@ -2149,7 +2149,7 @@
   })();
   var CK_FLAT = [];
   CK_GROUPS.forEach(function (g) { g.items.forEach(function (it) { CK_FLAT.push(it); }); });
-  var ckMeta = { view: 'groups', gi: -1, filter: 'all', openItem: {}, batch: false };
+  var ckMeta = { filter: 'all', openGroup: {}, openItem: {}, batch: false };
   var ckSel = {};
 
   function ckAnswers() {
@@ -2176,7 +2176,8 @@
 
   function openChecklist() {
     ckMeta.filter = 'all';
-    ckMeta.view = 'groups';
+    ckMeta.openGroup = {};
+    ckMeta.openItem = {};
     ckMeta.batch = false;
     ckSel = {};
     if ($('ckSearch')) $('ckSearch').value = '';
@@ -2280,6 +2281,24 @@
       '</div>' + detail + '</div>';
   }
 
+  function ckGroupHeaderHtml(gi) {
+    var g = CK_GROUPS[gi];
+    var s = ckGroupStats(gi);
+    var open = !!ckMeta.openGroup[gi];
+    return '<button class="ck-gcard' + (open ? ' open' : '') + '" data-g="' + gi + '">' +
+      '<span class="nm">' + C.escapeHtml(g.name) + '</span>' +
+      '<span class="meta">' + s.done + '/' + s.total + (s.ng ? ' · 不符合 ' + s.ng : '') + '</span>' +
+      '<span class="chev">' + (open ? '⌃' : '⌄') + '</span></button>' +
+      '<div class="ck-gbody' + (open ? '' : ' hidden') + '" data-gbody="' + gi + '">' +
+      (open ? ckGroupItemsHtml(gi) : '') + '</div>';
+  }
+
+  function ckGroupItemsHtml(gi) {
+    var items = ckVisibleItems(gi);
+    if (!items.length) return '<div class="ck-empty">没有符合条件的检查项</div>';
+    return '<div class="ck-items">' + items.map(ckItemHtml).join('') + '</div>';
+  }
+
   function renderChecklist() {
     var st = ckStats();
     var q = ($('ckSearch').value || '').trim();
@@ -2295,22 +2314,12 @@
     Array.prototype.forEach.call($('ckTabs').children, function (b) {
       b.classList.toggle('on', b.dataset.f === ckMeta.filter);
     });
-    $('viewChecklist').classList.toggle('ck-group-view', ckMeta.view === 'group');
+    $('viewChecklist').classList.toggle('ck-group-view', ckMeta.filter !== 'all');
     $('btnCkBatch').textContent = ckMeta.batch ? '完成' : '批量';
 
-    var showFlat = ckMeta.batch || ckMeta.filter !== 'all' || !!q;
     var html = '';
-
-    if (ckMeta.view === 'group') {
-      var g = CK_GROUPS[ckMeta.gi] || CK_GROUPS[0];
-      var gs = ckGroupStats(ckMeta.gi);
-      var items = ckVisibleItems(ckMeta.gi);
-      html = '<button class="ck-gback" id="ckGBack">‹ 全部区域</button>' +
-        '<div class="ck-ghead"><b>' + C.escapeHtml(g.name) + '</b><span>' + gs.done + '/' + gs.total +
-        (gs.ng ? ' · 不符合 ' + gs.ng : '') + '</span></div>' +
-        '<div class="ck-items">' +
-        (items.length ? items.map(ckItemHtml).join('') : '<div class="ck-empty">没有符合条件的检查项</div>') + '</div>';
-    } else if (showFlat) {
+    if (ckMeta.filter !== 'all' || !!q) {
+      // 筛选/搜索时全部平铺，方便快速定位
       var flat = CK_GROUPS.map(function (g2, gi) {
         var its = ckVisibleItems(gi);
         if (!its.length) return '';
@@ -2318,24 +2327,26 @@
       }).join('');
       html = '<div class="ck-items">' + (flat || '<div class="ck-empty">没有符合条件的检查项</div>') + '</div>';
     } else {
-      html = CK_GROUPS.map(function (g2, gi) {
-        var s = ckGroupStats(gi);
-        return '<button class="ck-gcard" data-g="' + gi + '"><span class="nm">' + C.escapeHtml(g2.name) + '</span>' +
-          '<span class="meta">' + s.done + '/' + s.total + (s.ng ? ' · 不符合 ' + s.ng : '') + '</span>' +
-          '<span class="chev">›</span></button>';
-      }).join('');
+      // 手风琴：区域就地展开/收起
+      html = CK_GROUPS.map(function (g2, gi) { return ckGroupHeaderHtml(gi); }).join('');
     }
 
     $('ckList').innerHTML = html;
-    var gb = $('ckGBack');
-    if (gb) gb.onclick = function () { ckMeta.view = 'groups'; ckMeta.batch = false; ckSel = {}; renderChecklist(); };
     Array.prototype.forEach.call($('ckList').querySelectorAll('.ck-gcard'), function (b) {
       b.onclick = function () {
-        ckMeta.view = 'group';
-        ckMeta.gi = Number(b.dataset.g);
-        ckMeta.batch = false;
-        ckSel = {};
+        var gi = Number(b.dataset.g);
+        ckMeta.openGroup[gi] = !ckMeta.openGroup[gi];
+        if (!ckMeta.openGroup[gi]) ckSel = {};
         renderChecklist();
+        if (ckMeta.openGroup[gi]) {
+          var body = document.querySelector('.ck-gbody[data-gbody="' + gi + '"]');
+          if (body) {
+            var head = b.getBoundingClientRect();
+            if (head.top < 60) {
+              try { body.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) {}
+            }
+          }
+        }
       };
     });
     var selN = Object.keys(ckSel).length;
@@ -2364,9 +2375,14 @@
 
   function ckSelectAllVisible() {
     var ids = [];
-    if (ckMeta.view === 'group') {
-      ckVisibleItems(ckMeta.gi).forEach(function (it) { ids.push(it); });
-    } else {
+    var anyOpen = false;
+    CK_GROUPS.forEach(function (g, gi) {
+      if (ckMeta.filter === 'all' && !ckMeta.openGroup[gi]) return;   // 只选已展开区域
+      anyOpen = anyOpen || !!ckMeta.openGroup[gi];
+      ckVisibleItems(gi).forEach(function (it) { ids.push(it); });
+    });
+    if (!ids.length && ckMeta.filter === 'all') {
+      // 没有展开任何区域时，退化为全选全部
       CK_GROUPS.forEach(function (g, gi) {
         ckVisibleItems(gi).forEach(function (it) { ids.push(it); });
       });
