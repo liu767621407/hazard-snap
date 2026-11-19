@@ -4,10 +4,11 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.3.0';
+  var WEB_VERSION = '4.3.1';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
-    selecting: false, selected: {}, moduleKind: 'photo'
+    selecting: false, selected: {}, moduleKind: 'photo',
+    editOnly: false, _editBackup: null
   };
   var pendingQuick = false;
   var pendingCk = null;
@@ -1588,11 +1589,14 @@
         '<div class="chk-acts">' +
         (isCur
           ? '<button class="btn primary" data-open="' + C.escapeHtml(b.id) + '">继续</button>' +
+            '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>' +
             '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>'
           : (done
             ? '<button class="btn" data-reopen="' + C.escapeHtml(b.id) + '">重新打开</button>' +
+              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>' +
               '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>'
             : '<button class="btn" data-open="' + C.escapeHtml(b.id) + '">打开</button>' +
+              '<button class="btn" data-edit="' + C.escapeHtml(b.id) + '">编辑</button>' +
               '<button class="btn ghost" data-del="' + C.escapeHtml(b.id) + '">删除</button>')) +
         '</div></div>';
     }).join('');
@@ -1605,6 +1609,21 @@
     Array.prototype.forEach.call($('checksList').querySelectorAll('[data-del]'), function (x) {
       x.onclick = function () { deleteCheck(x.dataset.del); };
     });
+    Array.prototype.forEach.call($('checksList').querySelectorAll('[data-edit]'), function (x) {
+      x.onclick = function () { editCheckInfo(x.dataset.edit); };
+    });
+  }
+
+  // 从检查列表编辑某份检查的基本信息（不改“当前”归属）
+  async function editCheckInfo(id) {
+    var b = await dbGet('batches', id);
+    if (!b) return;
+    state._editBackup = state.batch;
+    state.editOnly = true;
+    state.batch = b;
+    state.moduleKind = moduleOf(b);
+    state.setupReturn = 'checks';
+    openSetup({ title: '编辑检查信息', sub: '改完回到检查列表' });
   }
 
   // 把某份检查设为该模块的进行中并进入工作台
@@ -1959,6 +1978,16 @@
     }
     saveBatch();
     backTo = null;
+    state.setupReturn = '';
+    if (state.editOnly) {
+      // 从检查列表进来改基本信息：存完回列表
+      state.editOnly = false;
+      state.batch = state._editBackup || state.batch;
+      state._editBackup = null;
+      showView('checks');
+      toast('检查信息已更新');
+      return;
+    }
     showView('home');
     toast('已保存本次检查信息');
   }
@@ -2504,6 +2533,11 @@
       // 新建检查时返回 → 回该模块的检查列表
       if (state.setupReturn === 'checks' && (state.batch || state.moduleKind)) {
         state.setupReturn = '';
+        if (state.editOnly) {
+          state.editOnly = false;
+          state.batch = state._editBackup || null;
+          state._editBackup = null;
+        }
         showView('checks');
         return;
       }
