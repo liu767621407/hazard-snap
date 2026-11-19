@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---------------- 状态 ----------------
-  var WEB_VERSION = '4.2.1';
+  var WEB_VERSION = '4.3.0';
   var state = {
     cfg: null, batch: null, photos: [], editing: null,
     selecting: false, selected: {}, moduleKind: 'photo'
@@ -882,7 +882,7 @@
   window.addEventListener('popstate', function () {
     var v = document.body.dataset.view;
     if (v === 'entry') return;
-    if (v === 'edit') { $('btnBack').click(); return; }
+    if (v === 'edit') { completeEditing(); return; }
     goUp();
   });
 
@@ -1865,7 +1865,6 @@
     $('setupTitle').textContent = '默认检查信息';
     $('setupSub').textContent = '新建检查时自动带上，可逐次修改';
     $('btnSaveCfg').textContent = '保存默认值';
-    $('btnSetBack').style.visibility = 'visible';
     $('cfgName').value = cfg.name || '';
     $('cfgUnit').value = cfg.unit || '';
     $('cfgShort').value = cfg.short_unit || '';
@@ -1910,7 +1909,6 @@
     $('setupTitle').textContent = opts.title || '检查信息';
     $('setupSub').textContent = opts.sub || '写进通知单的表头和落款';
     $('btnSaveCfg').textContent = '保存';
-    $('btnSetBack').style.visibility = 'visible';
 
     $('cfgName').value = meta.name || '';
     $('cfgUnit').value = meta.unit || '';
@@ -2283,16 +2281,12 @@
   function bind() {
     $('btnMenu').addEventListener('click', openModuleMenu);
     $('btnEntryMenu').addEventListener('click', openEntryMenu);
-    $('btnEntryBack').addEventListener('click', function () { showView('entry'); });
     $('btnArchiveEntry').addEventListener('click', function () { openArchive(archiveKind || 'photo'); });
-    $('btnArchiveBack').addEventListener('click', function () { showView('entry'); });
-    $('btnChecksBack').addEventListener('click', function () { showView('entry'); });
     $('btnChecksNew').addEventListener('click', function () { startNewCheck(state.moduleKind || 'photo'); });
     $('btnExportCkList').addEventListener('click', function () { exportOne('cklist'); });
     Array.prototype.forEach.call($('archiveTabs').children, function (b) {
       b.addEventListener('click', function () { archiveKind = b.dataset.f; renderArchive(); });
     });
-    $('btnCkBack').addEventListener('click', goUp);
     $('btnCkBatch').addEventListener('click', function () {
       ckMeta.batch = !ckMeta.batch;
       if (!ckMeta.batch) ckSel = {};
@@ -2391,16 +2385,13 @@
       if (btn.dataset.action === 'new') { startNewCheck(state.moduleKind || 'photo'); return; }
       quickCapture();
     });
-    $('btnBack').addEventListener('click', function () { completeEditing(); });
     $('btnDone').addEventListener('click', function () { completeEditing(); });
     $('btnDeleteHazard').addEventListener('click', deleteCurrentHazard);
-    $('btnSetBack').addEventListener('click', goUp);
     $('btnSaveCfg').addEventListener('click', saveSetup);
     $('btnManage').addEventListener('click', function () { setSelecting(true); });
     $('btnSelAll').addEventListener('click', selectAllToggle);
     $('btnSelDelete').addEventListener('click', deleteSelected);
     $('btnSelDone').addEventListener('click', function () { setSelecting(false); });
-    $('btnExportBack').addEventListener('click', goUp);
     $('btnExportDocx').addEventListener('click', function () { exportOne('notice'); });
     $('btnExportStub').addEventListener('click', function () { exportOne('stub'); });
     $('btnExportPdf').addEventListener('click', function () { exportOne('pdf'); });
@@ -2493,10 +2484,12 @@
     try {
       if (!$('mask').classList.contains('hidden')) { closeSheet(); return true; }
       var view = document.body.dataset.view;
-      if (view === 'edit') { $('btnBack').click(); return true; }
-      if (view === 'export' || view === 'settings' || view === 'checklist' || view === 'archive') { goUp(); return true; }
+      if (view === 'entry') return false;
+      if (view === 'edit') { completeEditing(); return true; }
       if (state.selecting) { setSelecting(false); return true; }
-      if (view === 'home') { showView('entry'); return true; }
+      if (view !== 'home') { goUp(); return true; }
+      showView('entry');
+      return true;
     } catch (e) { console.warn('SnapBack', e); }
     return false;
   };

@@ -229,6 +229,8 @@ input:focus,textarea:focus{border-color:#9FC3EE;background:#fff;box-shadow:0 0 0
 .row2{gap:10px}
 .cfgDeadlineHint{color:#7C8EA1}
 
+.hd-spacer{width:40px;height:40px;flex:0 0 auto}
+
 /* ---------- 隐患卡片滑动删除 ---------- */
 .swipe-wrap{position:relative;overflow:hidden;border-radius:var(--r)}
 .swipe-wrap .card{position:relative;z-index:2;transition:transform .18s ease;background:#fff;will-change:transform}
